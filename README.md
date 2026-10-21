@@ -4,7 +4,7 @@ Most fraud losses in Nigerian banks today come from people who were talked into 
 
 Scam money always lands somewhere first, usually in a mule account that gets paid by many strangers and empties itself within minutes. TheOne finds those accounts and the rings they form, and checks every outgoing payment before it leaves the bank: allow it, warn the sender, ask the owner to confirm, or hold it.
 
-Built by Kingsley Udoma for Zenith Bank's Zecathon 6.0.
+
 
 ## Architecture
 
