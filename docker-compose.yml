@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: ./backend
+    ports: ["8000:8000"]
+    environment:
+      TEMPLATE_ENCRYPTION_KEY: ${TEMPLATE_ENCRYPTION_KEY:?set a Fernet key}
+      CORS_ORIGINS: http://localhost:3000
+    volumes:
+      - voiceid-data:/data
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev"
+    ports: ["3000:3000"]
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    volumes:
+      - ./frontend:/app
+    depends_on: [backend]
+volumes:
+  voiceid-data:
