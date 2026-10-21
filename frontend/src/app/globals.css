@@ -1,0 +1,157 @@
+@import "tailwindcss";
+
+/* TheOne console tokens. Brand: red and charcoal on flat white. Status colours follow the
+   reference status palette and always ship with an icon and a label. */
+:root {
+  --brand: #d71920;
+  --brand-strong: #b0121a;
+  --brand-soft: #fdecec;
+  --ink: #1f1f1f;
+  --ink-2: #4a4a4a;
+  --muted: #6e6e6e;
+  --canvas: #f4f4f4;
+  --surface: #ffffff;
+  --surface-2: #fafafa;
+  --line: #e4e4e4;
+  --line-strong: #cfcfcf;
+  --sidebar: #fafafa;
+  --sidebar-ink: #3a3a3a;
+  --sidebar-strong: #1f1f1f;
+  --sidebar-muted: #8a8a8a;
+  --sidebar-hover: #f0f0f0;
+  --sidebar-active: #fdecec;
+  --sidebar-active-ink: #b0121a;
+  --sidebar-line: #e4e4e4;
+  --focus: #d71920;
+
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --good-soft: #e8f6e8;
+  --warning-soft: #fff5de;
+  --serious-soft: #fdeee7;
+  --critical-soft: #fbeaea;
+  --info: #2f5fb3;
+  --info-soft: #eaf0fa;
+
+  --border: var(--line);
+  --track: #ececec;
+  --warn: #c27c00;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --brand: #ef3b42;
+    --brand-strong: #ff5a60;
+    --brand-soft: #3a1416;
+    --ink: #ededed;
+    --ink-2: #c7c7c7;
+    --muted: #9a9a9a;
+    --canvas: #141414;
+    --surface: #1a1a19;
+    --surface-2: #212120;
+    --line: #2e2e2d;
+    --line-strong: #3d3d3c;
+    --sidebar: #1a1a19;
+    --sidebar-ink: #c7c7c7;
+    --sidebar-strong: #ededed;
+    --sidebar-muted: #8c8c8c;
+    --sidebar-hover: #242423;
+    --sidebar-active: #3a1416;
+    --sidebar-active-ink: #ff8a8e;
+    --sidebar-line: #2e2e2d;
+    --good-soft: #13291a;
+    --warning-soft: #2e2510;
+    --serious-soft: #301d15;
+    --critical-soft: #331616;
+    --info: #7aa2ec;
+    --info-soft: #15203a;
+    --track: #2a2a29;
+    --warn: #f0b13a;
+  }
+}
+
+@theme inline {
+  --color-background: var(--canvas);
+  --color-foreground: var(--ink);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-mono);
+}
+
+html,
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+input,
+select,
+textarea {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+@keyframes toast-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: 200px 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--line) 0px, var(--surface-2) 80px, var(--line) 160px);
+  background-size: 400px 100%;
+  animation: shimmer 1.2s infinite linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
