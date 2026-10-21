@@ -1,7 +1,7 @@
 "use client";
 
 /** The money map, full screen: bigger, zoomable and draggable, with the selected account's whole money trail lit up. */
-import { Minimize2, Minus, Plus, X } from "lucide-react";
+import { AudioLines, Minimize2, Minus, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/presentation/components/ui";
@@ -18,12 +18,14 @@ const clamp = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(z 
 // Height of the colour key under the map.
 const LEGEND_H = 64;
 
-export function MoneyMapFullscreen({ ring, selected, onSelect, onDetails, onClose }: {
+export function MoneyMapFullscreen({ ring, selected, onSelect, onDetails, onBriefing, onClose }: {
   ring: RingDetail;
   selected: string | null;
   onSelect: (id: string | null) => void;
   /** Open the account panel for the selected account. */
   onDetails: () => void;
+  /** Start a voice briefing on this ring; absent while one is running. */
+  onBriefing?: () => void;
   onClose: () => void;
 }) {
   // Null until the map is sized to fit the screen.
@@ -101,6 +103,7 @@ export function MoneyMapFullscreen({ ring, selected, onSelect, onDetails, onClos
             <Plus className="size-4" />
           </button>
         </div>
+        {onBriefing && <Button icon={AudioLines} onClick={onBriefing}>Talk me through it</Button>}
         <Button icon={Minimize2} onClick={onClose}>Close</Button>
       </div>
 

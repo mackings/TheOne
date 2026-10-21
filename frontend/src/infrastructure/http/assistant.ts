@@ -6,7 +6,7 @@ import { API_KEY, API_URL, json, request } from "./client";
 export const httpAssistant: AssistantGateway = {
   status: () => request<AssistantStatus>("/assistant/status"),
   chat: (messages: ChatMessage[]) => request<ChatReply>("/assistant/chat", json({ messages })),
-  live: (onEvent) => new LiveVoice(onEvent),
+  live: (onEvent, opts) => new LiveVoice(onEvent, opts?.ring),
 };
 
 function toBase64(bytes: Uint8Array): string {
@@ -30,7 +30,10 @@ class LiveVoice implements LiveSession {
   private nextAt = 0;
   level = 0;
 
-  constructor(private onEvent: (e: LiveEvent) => void) {}
+  constructor(
+    private onEvent: (e: LiveEvent) => void,
+    private ring?: string,
+  ) {}
 
   async start(): Promise<void> {
     this.stream = await navigator.mediaDevices.getUserMedia({
@@ -40,7 +43,10 @@ class LiveVoice implements LiveSession {
     this.mic = new AudioContext({ sampleRate: 16000 });
     await Promise.all([this.out.resume(), this.mic.resume()]);
 
-    const url = `${API_URL.replace(/^http/, "ws")}/assistant/live${API_KEY ? `?key=${encodeURIComponent(API_KEY)}` : ""}`;
+    const params = new URLSearchParams();
+    if (API_KEY) params.set("key", API_KEY);
+    if (this.ring) params.set("ring", this.ring);
+    const url = `${API_URL.replace(/^http/, "ws")}/assistant/live${params.size ? `?${params}` : ""}`;
     this.ws = new WebSocket(url);
     this.ws.onmessage = (m) => this.handle(JSON.parse(m.data));
     this.ws.onclose = () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Maximize2, Copy, FileSearch, FileText, History, Lightbulb, Network, Route, Users, XCircle } from "lucide-react";
+import { AudioLines, Check, Maximize2, Copy, FileSearch, FileText, History, Lightbulb, Network, Route, Users, XCircle } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
@@ -26,6 +26,7 @@ import { pick, RING_STATUS } from "@/presentation/status";
 import { type PlanAction, ringStory } from "./explain";
 import { AccountDrawer } from "./ring/AccountDrawer";
 import { MoneyMapFullscreen } from "./ring/MoneyMapFullscreen";
+import { RingBriefing } from "./ring/RingBriefing";
 import { type Act, ACT_COPY, findingsOf } from "./ring/copy";
 import { RingAccounts } from "./ring/RingAccounts";
 import { RingActivity } from "./ring/RingActivity";
@@ -44,11 +45,18 @@ export function RingView() {
   const [actor, setActor] = useActor();
   const ring = useAsync(() => net.ring(id), [id]);
   const [selected, setSelected] = useState<string | null>(null);
+  // The account the voice briefing is talking about: lit on the map, without opening its panel.
+  const [spotlight, setSpotlight] = useState<string | null>(null);
+  const [briefing, setBriefing] = useState(false);
   const [tab, setTab] = useState<Tab>("summary");
   const [big, setBig] = useState(false);
   const [details, setDetails] = useState(false);
   const [tracing, setTracing] = useState(false);
   const [copied, setCopied] = useState(false);
+  function chooseAccount(id: string | null) {
+    setSelected(id);
+    setSpotlight(null);
+  }
   function copyNumber(text: string) {
     navigator.clipboard?.writeText(text).then(
       () => {
@@ -190,12 +198,13 @@ export function RingView() {
               description="The money moves from left to right. Click an account to see why it was flagged, or point at it for its account number."
               actions={
                 <>
+                  <Button size="sm" icon={AudioLines} disabled={briefing} onClick={() => setBriefing(true)}>Talk me through it</Button>
                   <Button size="sm" icon={Route} loading={tracing} onClick={() => setConfirmTrace(true)}>Follow it into other banks</Button>
                   <Button size="sm" variant="primary" icon={Maximize2} onClick={() => setBig(true)}>Enlarge</Button>
                 </>
               }
             >
-              <RingGraph ring={r} selected={selected} onSelect={setSelected} />
+              <RingGraph ring={r} selected={selected ?? spotlight} onSelect={chooseAccount} />
             </Section>
           )}
 
@@ -206,8 +215,10 @@ export function RingView() {
       )}
 
       {big && r && (
-        <MoneyMapFullscreen ring={r} selected={selected} onSelect={setSelected} onDetails={() => setDetails(true)} onClose={() => { setBig(false); setDetails(false); }} />
+        <MoneyMapFullscreen ring={r} selected={selected ?? spotlight} onSelect={chooseAccount} onDetails={() => { setSelected(selected ?? spotlight); setDetails(true); }}
+          onBriefing={briefing ? undefined : () => setBriefing(true)} onClose={() => { setBig(false); setDetails(false); }} />
       )}
+      {briefing && r && <RingBriefing ring={r} onSpotlight={setSpotlight} onClose={() => setBriefing(false)} />}
       <AccountDrawer
         node={!big || details ? node : null}
         member={!!(node && r?.summary.roles[node.id])}

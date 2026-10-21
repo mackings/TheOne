@@ -82,11 +82,12 @@ def chat(messages: list[tuple[str, str]], s: Settings, run_tool: ToolRunner) -> 
     return {"reply": "That needed too many lookups. Try a narrower question.", "steps": steps, "ui": ui, "model": models[0]}
 
 
-def live_config(s: Settings):
+def live_config(s: Settings, system: str = SYSTEM):
+    """Accent is steered by the system instruction: native-audio models take no regional language code."""
     from google.genai import types
 
     return types.LiveConnectConfig(
-        response_modalities=["AUDIO"], system_instruction=SYSTEM, tools=declarations(types),
+        response_modalities=["AUDIO"], system_instruction=system, tools=declarations(types),
         input_audio_transcription=types.AudioTranscriptionConfig(), output_audio_transcription=types.AudioTranscriptionConfig(),
         speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(
             prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=s.gemini_voice))))

@@ -5,12 +5,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { cx } from "@/presentation/cx";
 import { useAsync } from "@/presentation/hooks/useAsync";
-import type { LiveEvent, UiAction } from "@/domain/assistant";
-import type { LiveSession } from "@/application/ports";
+import type { UiAction } from "@/domain/assistant";
 import { useAssistant } from "@/presentation/hooks/gateways";
-
-type Msg = { id: number; role: "user" | "assistant" | "step" | "error"; text: string; live?: boolean };
-type Voice = "off" | "connecting" | "listening" | "speaking";
+import { useVoiceConversation } from "@/presentation/hooks/useVoiceConversation";
 
 const SUGGESTIONS = ["What needs my attention today?", "Show me the riskiest ring", "Why was this account flagged?"];
 
@@ -19,89 +16,27 @@ export function Assistant() {
   const assistantApi = useAssistant();
   const router = useRouter();
   const status = useAsync(() => assistantApi.status());
+  const act = (ui: UiAction) => ui.navigate && router.push(ui.navigate);
+  const { msgs, add, voice, level, start, stop, say } = useVoiceConversation({ onUi: act });
   const [open, setOpen] = useState(false);
-  const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [voice, setVoice] = useState<Voice>("off");
-  const [level, setLevel] = useState(0);
-  const live = useRef<LiveSession | null>(null);
-  const seq = useRef(0);
   const list = useRef<HTMLDivElement>(null);
-
-  const add = (role: Msg["role"], text: string, liveMsg = false) =>
-    setMsgs((xs) => [...xs, { id: ++seq.current, role, text, live: liveMsg }]);
-
-  // Streamed transcripts grow the current bubble of that speaker until the turn completes.
-  const grow = (role: "user" | "assistant", text: string) =>
-    setMsgs((xs) => {
-      const last = xs[xs.length - 1];
-      if (last && last.role === role && last.live) return [...xs.slice(0, -1), { ...last, text: last.text + text }];
-      return [...xs.map((x) => (x.live ? { ...x, live: false } : x)), { id: ++seq.current, role, text, live: true }];
-    });
-
-  const act = (ui: UiAction) => ui.navigate && router.push(ui.navigate);
 
   useEffect(() => {
     list.current?.scrollTo({ top: list.current.scrollHeight, behavior: "smooth" });
   }, [msgs]);
 
-  useEffect(() => {
-    if (voice === "off") return;
-    let raf = 0;
-    const tick = () => {
-      setLevel(live.current?.level ?? 0);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [voice]);
-
-  useEffect(() => () => live.current?.stop(), []);
-
-  function onLive(e: LiveEvent) {
-    if (e.type === "ready") setVoice("listening");
-    else if (e.type === "user_text") grow("user", e.text);
-    else if (e.type === "assistant_text") grow("assistant", e.text);
-    else if (e.type === "step") add("step", e.text);
-    else if (e.type === "ui") act(e.action);
-    else if (e.type === "speaking") setVoice((v) => (v === "off" ? v : e.on ? "speaking" : "listening"));
-    else if (e.type === "turn_complete") setMsgs((xs) => xs.map((x) => (x.live ? { ...x, live: false } : x)));
-    else if (e.type === "error") add("error", e.text);
-    else if (e.type === "closed") {
-      live.current = null;
-      setVoice("off");
-    }
-  }
-
-  async function toggleVoice() {
-    if (live.current) {
-      live.current.stop();
-      live.current = null;
-      setVoice("off");
-      return;
-    }
-    setVoice("connecting");
-    const v = assistantApi.live(onLive);
-    live.current = v;
-    try {
-      await v.start();
-    } catch (e) {
-      live.current = null;
-      setVoice("off");
-      add("error", (e as Error).message.includes("Permission") ? "Microphone permission was refused." : (e as Error).message);
-    }
+  function toggleVoice() {
+    if (voice === "off") start();
+    else stop();
   }
 
   async function send(text: string) {
     const q = text.trim();
     if (!q || busy) return;
     setInput("");
-    if (live.current?.open) {
-      add("user", q);
-      live.current.sendText(q);
-      return;
-    }
+    if (say(q)) return;
     const history = [...msgs.filter((m) => m.role === "user" || m.role === "assistant"), { role: "user" as const, text: q }]
       .slice(-12)
       .map((m) => ({ role: m.role as "user" | "assistant", text: m.text }));
@@ -126,7 +61,7 @@ export function Assistant() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 inline-flex h-12 [body[data-fullscreen]_&]:hidden items-center gap-2 rounded-full bg-[var(--brand)] px-5 text-sm font-semibold text-white shadow-lg hover:bg-[var(--brand-strong)]"
+          className="fixed bottom-5 right-5 z-40 inline-flex h-12 [body[data-fullscreen]_&]:hidden [body[data-briefing]_&]:hidden items-center gap-2 rounded-full bg-[var(--brand)] px-5 text-sm font-semibold text-white shadow-lg hover:bg-[var(--brand-strong)]"
         >
           <Sparkles className="size-4" />
           Ask TheOne
@@ -148,7 +83,7 @@ export function Assistant() {
                 {voice === "off" ? "Ask by typing, or tap the mic to talk" : voice === "connecting" ? "Connecting…" : voice === "speaking" ? "Speaking…" : "Listening…"}
               </div>
             </div>
-            <button className="rounded p-1.5 text-[var(--muted)] hover:bg-[var(--surface-2)]" onClick={() => { live.current?.stop(); setOpen(false); }} aria-label="Close assistant">
+            <button className="rounded p-1.5 text-[var(--muted)] hover:bg-[var(--surface-2)]" onClick={() => { stop(); setOpen(false); }} aria-label="Close assistant">
               <X className="size-4" />
             </button>
           </header>

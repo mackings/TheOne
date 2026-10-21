@@ -156,6 +156,27 @@ TOOLS: dict[str, tuple[Any, str, dict]] = {
 }
 
 
+def ring_facts(uow: NetworkUnitOfWork, s: Settings, ring: str) -> dict:
+    """Everything a voice briefing on one ring starts from: the story, the evidence, the members and the
+    biggest money movements on its map."""
+    g = queries.ring_graph(cache.get(uow), ring)
+    sm = g["summary"]
+    nodes = {n["id"]: n for n in g["nodes"]}
+
+    def who(acc_id: str) -> str:
+        n = nodes[acc_id]
+        role = explain.ROLE.get(n["role"], (n["role"], ""))[0].lower()
+        return f"{n['name'] or 'unknown'} ({mask(n['account_no'])}, {role})"
+
+    flows = sorted(g["edges"], key=lambda e: -e["amount"])[:15]
+    return {**t_get_ring(uow, s, ring=str(g.get("number") or g["id"])),
+            "accounts_in_ring": sm["size"], "people_who_paid_in": sm["possible_victims"],
+            "money_paid_in": naira(sm["victim_inflow"]), "taken_out_as_cash": naira(sm["cash_out_total"]),
+            "first_seen": (sm["first_seen"] or "")[:10], "last_seen": (sm["last_seen"] or "")[:10],
+            "biggest_money_flows": [{"from": who(e["src"]), "to": who(e["dst"]), "amount": naira(e["amount"]),
+                                     "payments": e["count"], "by": e["channels"]} for e in flows]}
+
+
 def run_tool(name: str, args: dict | None, s: Settings, new_uow: UnitOfWorkFactory) -> tuple[dict, dict | None]:
     """Run one tool in a transaction of its own. Returns (result for the model, UI action or None)."""
     fn = TOOLS.get(name, (None,))[0]

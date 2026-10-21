@@ -130,7 +130,8 @@ export interface LiveSession {
 export interface AssistantGateway {
   status(): Promise<AssistantStatus>;
   chat(messages: ChatMessage[]): Promise<ChatReply>;
-  live(onEvent: (e: LiveEvent) => void): LiveSession;
+  /** With `ring`, the session is a spoken briefing on that ring and opens by explaining it. */
+  live(onEvent: (e: LiveEvent) => void, opts?: { ring?: string }): LiveSession;
 }
 
 /** Pages and files the API serves, opened in a new tab or saved (a plain link cannot carry the API key). */

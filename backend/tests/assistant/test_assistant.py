@@ -72,3 +72,23 @@ def test_access_rules(client, monkeypatch):
         with client.websocket_connect("/assistant/live?key=app-key") as ws:
             ws.receive_json()
     assert e.value.code == 4403
+
+
+def test_ring_briefing_starts_from_the_ring_facts(client):
+    import json
+
+    from app.assistant.application.prompt import ring_briefing
+    from app.assistant.application.tools import ring_facts
+
+    classic_ring(client)
+    ring = client.get("/network/rings").json()[0]
+    uow = new_uow()
+    try:
+        facts = ring_facts(uow, get_settings(), str(ring["number"]))
+    finally:
+        uow.close()
+    assert facts["ring"] == ring["number"] and facts["what_happened"] and facts["biggest_money_flows"]
+    assert {"from", "to", "amount", "payments", "by"} <= set(facts["biggest_money_flows"][0])
+    prompt = ring_briefing(str(facts["ring"]), json.dumps(facts, ensure_ascii=False))
+    assert prompt.startswith("Your voice matters most") and "Nigerian accent" in prompt and "not Pidgin" in prompt
+    assert str(ring["number"]) in prompt and facts["money_paid_in"] in prompt

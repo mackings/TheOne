@@ -24,7 +24,8 @@ from pydantic import BaseModel, Field
 
 from app.api.auth import STAFF, role_for_key
 from app.api.deps import new_uow
-from app.assistant.application.tools import describe, run_tool
+from app.assistant.application.prompt import ring_briefing
+from app.assistant.application.tools import describe, ring_facts, run_tool
 from app.assistant.infrastructure import gemini
 from app.core.config import Settings, get_settings
 
@@ -53,6 +54,14 @@ def chat(body: ChatIn, s: Settings = Depends(get_settings)):
 
 
 
+def _ring_facts(ring: str, s: Settings) -> dict:
+    uow = new_uow()
+    try:
+        return ring_facts(uow, s, ring)
+    finally:
+        uow.close()
+
+
 @router.websocket("/live")
 async def live(ws: WebSocket):
     """Browser protocol (JSON text frames):
@@ -60,7 +69,8 @@ async def live(ws: WebSocket):
     out: {"type":"ready"} | {"type":"audio","data":<base64 PCM16 24 kHz>} | {"type":"user_text"|"assistant_text","text":...}
          | {"type":"step","text":...} | {"type":"ui","action":{...}} | {"type":"turn_complete"} | {"type":"interrupted"}
          | {"type":"error","text":...}
-    The API key travels as ?key=, because browsers cannot set headers on a WebSocket."""
+    The API key travels as ?key=, because browsers cannot set headers on a WebSocket. With ?ring=<id or number>
+    the session is a briefing on that ring: it opens by explaining how the fraud took place."""
     s = get_settings()
     keys = s.role_keys
     role = role_for_key(ws.query_params.get("key"), keys) if keys else "admin"
@@ -74,9 +84,23 @@ async def live(ws: WebSocket):
         return
     from google.genai import types
 
+    ring = ws.query_params.get("ring")
+    config = gemini.live_config(s)
+    if ring:
+        try:
+            facts = await asyncio.to_thread(_ring_facts, ring, s)
+        except Exception:
+            log.exception("ring briefing could not load ring %s", ring)
+            await ws.send_json({"type": "error", "text": "That ring could not be loaded for a briefing."})
+            await ws.close()
+            return
+        config = gemini.live_config(s, ring_briefing(str(facts["ring"]), json.dumps(facts, ensure_ascii=False)))
+
     try:
-        async with gemini.client(s).aio.live.connect(model=s.gemini_live_model, config=gemini.live_config(s)) as session:
+        async with gemini.client(s).aio.live.connect(model=s.gemini_live_model, config=config) as session:
             await ws.send_json({"type": "ready"})
+            if ring:
+                await session.send_realtime_input(text="Please explain how the fraud in this ring took place.")
 
             async def upstream():
                 while True:
