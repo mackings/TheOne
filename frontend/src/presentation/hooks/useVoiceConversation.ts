@@ -10,11 +10,11 @@ import { useAssistant } from "@/presentation/hooks/gateways";
 export type Msg = { id: number; role: "user" | "assistant" | "step" | "error"; text: string; live?: boolean };
 export type VoiceState = "off" | "connecting" | "listening" | "speaking";
 
-export function useVoiceConversation({ ring, onUi, onSpoken }: {
-  ring?: string;
+export function useVoiceConversation({ onUi, onSpoken, onReady }: {
   onUi?: (ui: UiAction) => void;
   /** Everything the assistant has said in its current turn so far. */
   onSpoken?: (text: string) => void;
+  onReady?: () => void;
 } = {}) {
   const assistant = useAssistant();
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -23,11 +23,11 @@ export function useVoiceConversation({ ring, onUi, onSpoken }: {
   const live = useRef<LiveSession | null>(null);
   const seq = useRef(0);
   const spoken = useRef("");
-  const handlers = useRef({ onUi, onSpoken });
+  const handlers = useRef({ onUi, onSpoken, onReady });
 
   useEffect(() => {
-    handlers.current = { onUi, onSpoken };
-  }, [onUi, onSpoken]);
+    handlers.current = { onUi, onSpoken, onReady };
+  }, [onUi, onSpoken, onReady]);
 
   const add = (role: Msg["role"], text: string) => setMsgs((xs) => [...xs, { id: ++seq.current, role, text }]);
 
@@ -53,8 +53,10 @@ export function useVoiceConversation({ ring, onUi, onSpoken }: {
   useEffect(() => () => live.current?.stop(), []);
 
   function onEvent(e: LiveEvent) {
-    if (e.type === "ready") setVoice("listening");
-    else if (e.type === "user_text") grow("user", e.text);
+    if (e.type === "ready") {
+      setVoice("listening");
+      handlers.current.onReady?.();
+    } else if (e.type === "user_text") grow("user", e.text);
     else if (e.type === "assistant_text") {
       grow("assistant", e.text);
       spoken.current += e.text;
@@ -72,7 +74,8 @@ export function useVoiceConversation({ ring, onUi, onSpoken }: {
     }
   }
 
-  async function start() {
+  /** Start a call; with `ring` it opens with an explanation of that ring. */
+  async function start(ring?: string) {
     if (live.current) return;
     setVoice("connecting");
     const session = assistant.live(onEvent, { ring });
@@ -100,5 +103,9 @@ export function useVoiceConversation({ ring, onUi, onSpoken }: {
     return true;
   }
 
-  return { msgs, add, voice, level, start, stop, say };
+  function sendPage(page: { path: string; account?: string | null }) {
+    if (live.current?.open) live.current.sendPage(page);
+  }
+
+  return { msgs, add, voice, level, start, stop, say, sendPage };
 }

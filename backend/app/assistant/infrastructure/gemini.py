@@ -6,7 +6,7 @@ import logging
 import time
 from collections.abc import Callable
 
-from app.assistant.application.prompt import SYSTEM
+from app.assistant.application.prompt import LIVE, SYSTEM
 from app.assistant.application.tools import TOOLS, describe
 from app.core.config import Settings
 from app.core.errors import Unavailable, Upstream
@@ -82,12 +82,21 @@ def chat(messages: list[tuple[str, str]], s: Settings, run_tool: ToolRunner) -> 
     return {"reply": "That needed too many lookups. Try a narrower question.", "steps": steps, "ui": ui, "model": models[0]}
 
 
-def live_config(s: Settings, system: str = SYSTEM):
-    """Accent is steered by the system instruction: native-audio models take no regional language code."""
+CURRENT_PAGE = {"name": "current_page", "description": "What the analyst has open in the console right now: the page, "
+                "and on a ring page the ring and any account they selected."}
+
+
+def live_config(s: Settings, system: str = LIVE, handle: str | None = None):
+    """A voice call with Ziva. The accent comes from the system instruction: native-audio models take no regional
+    language code. Session resumption and a sliding context window keep the call going past the server's time limits."""
     from google.genai import types
 
+    tools = declarations(types)
+    tools[0].function_declarations.append(types.FunctionDeclaration(**CURRENT_PAGE))
     return types.LiveConnectConfig(
-        response_modalities=["AUDIO"], system_instruction=system, tools=declarations(types),
+        response_modalities=["AUDIO"], system_instruction=system, tools=tools,
         input_audio_transcription=types.AudioTranscriptionConfig(), output_audio_transcription=types.AudioTranscriptionConfig(),
         speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(
-            prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=s.gemini_voice))))
+            prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=s.gemini_voice))),
+        session_resumption=types.SessionResumptionConfig(handle=handle),
+        context_window_compression=types.ContextWindowCompressionConfig(sliding_window=types.SlidingWindow()))

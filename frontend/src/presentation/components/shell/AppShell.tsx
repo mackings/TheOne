@@ -22,7 +22,8 @@ import { Suspense, useEffect, useState } from "react";
 import { Badge } from "@/presentation/components/ui";
 import { cx } from "@/presentation/cx";
 
-import { Assistant } from "./Assistant";
+import { ZivaProvider } from "@/presentation/features/ziva/ZivaProvider";
+import { ZivaWidget } from "@/presentation/features/ziva/ZivaWidget";
 import type { NetSummary } from "@/domain/network";
 import { useNetwork } from "@/presentation/hooks/gateways";
 
@@ -116,72 +117,74 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-[var(--sidebar-line)] bg-[var(--sidebar)] lg:flex">
-        {brand}
-        {nav}
-        <div className="border-t border-[var(--sidebar-line)] px-5 py-3 text-[11px] text-[var(--sidebar-muted)]">
-          {summary ? `${summary.home_bank.name} · ${summary.home_bank.code}` : "Connecting…"}
-        </div>
-      </aside>
-
-      {open && (
-        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
-          <aside className="relative flex h-full w-72 flex-col bg-[var(--sidebar)]" style={{ animation: "drawer-in 160ms ease-out" }}>
-            <div className="flex items-center">
-              <div className="flex-1">{brand}</div>
-              <button className="mr-3 rounded p-2 text-[var(--sidebar-muted)] hover:text-[var(--sidebar-strong)]" onClick={() => setOpen(false)} aria-label="Close menu">
-                <X className="size-5" />
-              </button>
-            </div>
-            {nav}
-          </aside>
-        </div>
-      )}
-
-      <div className="flex min-h-screen flex-col lg:pl-64">
-        <div className={cx("sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 sm:px-6 lg:px-8", !notice && "lg:hidden")}>
-          <button className="-ml-1 rounded p-2 hover:bg-[var(--surface-2)] lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
-            <Menu className="size-5" />
-          </button>
-          <div className="flex items-center gap-2 lg:hidden">
-            <div className="flex size-7 items-center justify-center rounded-[6px] bg-[var(--brand)]">
-              <ShieldCheck className="size-4 text-white" />
-            </div>
-            <span className="font-semibold">TheOne</span>
+    <ZivaProvider>
+      <div className="min-h-screen">
+        <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-[var(--sidebar-line)] bg-[var(--sidebar)] lg:flex">
+          {brand}
+          {nav}
+          <div className="border-t border-[var(--sidebar-line)] px-5 py-3 text-[11px] text-[var(--sidebar-muted)]">
+            {summary ? `${summary.home_bank.name} · ${summary.home_bank.code}` : "Connecting…"}
           </div>
-          <div className="flex-1" />
-          {/* Only warnings appear here; the normal set-up is on the Settings page. */}
-          {offline ? (
-            <Badge tone="critical">Server unreachable</Badge>
-          ) : summary ? (
-            <div className="flex items-center gap-2">
-              {summary.mode === "shadow" && (
-                <Link href="/settings" title="Scores and records only; nothing is sent to the bank">
-                  <Badge tone="warning">Shadow mode: no bank actions</Badge>
-                </Link>
-              )}
-              {summary.bank_connector === "none" && (
-                <Link href="/settings" className="hidden sm:inline" title="Holds and blocks are recorded for manual follow-up">
-                  <Badge tone="neutral">No bank connection</Badge>
-                </Link>
-              )}
-              {!!openAlerts && (
-                <Link href="/network/alerts" className="hidden md:inline">
-                  <Badge tone="critical" icon={BellRing}>
-                    {openAlerts} open alert{openAlerts > 1 ? "s" : ""}
-                  </Badge>
-                </Link>
-              )}
+        </aside>
+  
+        {open && (
+          <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
+            <aside className="relative flex h-full w-72 flex-col bg-[var(--sidebar)]" style={{ animation: "drawer-in 160ms ease-out" }}>
+              <div className="flex items-center">
+                <div className="flex-1">{brand}</div>
+                <button className="mr-3 rounded p-2 text-[var(--sidebar-muted)] hover:text-[var(--sidebar-strong)]" onClick={() => setOpen(false)} aria-label="Close menu">
+                  <X className="size-5" />
+                </button>
+              </div>
+              {nav}
+            </aside>
+          </div>
+        )}
+  
+        <div className="flex min-h-screen flex-col lg:pl-64">
+          <div className={cx("sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 sm:px-6 lg:px-8", !notice && "lg:hidden")}>
+            <button className="-ml-1 rounded p-2 hover:bg-[var(--surface-2)] lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
+              <Menu className="size-5" />
+            </button>
+            <div className="flex items-center gap-2 lg:hidden">
+              <div className="flex size-7 items-center justify-center rounded-[6px] bg-[var(--brand)]">
+                <ShieldCheck className="size-4 text-white" />
+              </div>
+              <span className="font-semibold">TheOne</span>
             </div>
-          ) : null}
+            <div className="flex-1" />
+            {/* Only warnings appear here; the normal set-up is on the Settings page. */}
+            {offline ? (
+              <Badge tone="critical">Server unreachable</Badge>
+            ) : summary ? (
+              <div className="flex items-center gap-2">
+                {summary.mode === "shadow" && (
+                  <Link href="/settings" title="Scores and records only; nothing is sent to the bank">
+                    <Badge tone="warning">Shadow mode: no bank actions</Badge>
+                  </Link>
+                )}
+                {summary.bank_connector === "none" && (
+                  <Link href="/settings" className="hidden sm:inline" title="Holds and blocks are recorded for manual follow-up">
+                    <Badge tone="neutral">No bank connection</Badge>
+                  </Link>
+                )}
+                {!!openAlerts && (
+                  <Link href="/network/alerts" className="hidden md:inline">
+                    <Badge tone="critical" icon={BellRing}>
+                      {openAlerts} open alert{openAlerts > 1 ? "s" : ""}
+                    </Badge>
+                  </Link>
+                )}
+              </div>
+            ) : null}
+          </div>
+          {/* The last block on every page stretches to the bottom of the window, so no empty background shows below it. */}
+          <main className="flex flex-1 flex-col bg-[var(--canvas)] [&>:last-child]:flex-auto [&>:last-child]:pb-20">{children}</main>
+          <ZivaWidget />
         </div>
-        {/* The last block on every page stretches to the bottom of the window, so no empty background shows below it. */}
-        <main className="flex flex-1 flex-col bg-[var(--canvas)] [&>:last-child]:flex-auto [&>:last-child]:pb-20">{children}</main>
-        <Assistant />
       </div>
-    </div>
+    </ZivaProvider>
   );
 }
 

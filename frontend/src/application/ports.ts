@@ -124,6 +124,8 @@ export interface LiveSession {
   readonly level: number;
   start(): Promise<void>;
   sendText(text: string): void;
+  /** Tell the assistant what is on screen, so "this ring" or "this account" means what the analyst sees. */
+  sendPage(page: { path: string; account?: string | null }): void;
   stop(): void;
 }
 

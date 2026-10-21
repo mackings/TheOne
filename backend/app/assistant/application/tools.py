@@ -72,17 +72,31 @@ def t_list_rings(uow, s, status: str = "open", min_risk: float = 0.0, limit: int
 def t_get_ring(uow, s, ring: str, **_) -> dict:
     a = cache.get(uow)
     g = queries.ring_graph(a, _ring_id(a, ring))
-    members = sorted((n for n in g["nodes"] if n["id"] in g["summary"]["roles"]), key=lambda n: -n["risk"])
+    sm = g["summary"]
+    nodes = {n["id"]: n for n in g["nodes"]}
+    members = sorted((n for n in g["nodes"] if n["id"] in sm["roles"]), key=lambda n: -n["risk"])
     found: dict[str, int] = {}
     for n in members:
         for sg in n["signals"]:
             found[sg["code"]] = found.get(sg["code"], 0) + 1
     actions = queries.ring_actions(uow, g["id"])
+
+    def who(acc_id: str) -> str:
+        n = nodes[acc_id]
+        role = explain.ROLE.get(n["role"], (n["role"], ""))[0].lower()
+        return f"{n['name'] or 'unknown'} ({mask(n['account_no'])}, {role})"
+
     return {"ring": g.get("number") or g["id"][:8], "status": g["status"], "risk": round(g["score"], 2), "risk_band": BAND(g["score"]),
+            "accounts_in_ring": sm["size"], "people_who_paid_in": sm["possible_victims"],
+            "money_paid_in": naira(sm["victim_inflow"]), "taken_out_as_cash": naira(sm["cash_out_total"]),
+            "first_seen": (sm["first_seen"] or "")[:10], "last_seen": (sm["last_seen"] or "")[:10],
             "what_happened": [f"{t}. {b}" for t, b in explain.story(g)],
             "evidence": [{"finding": _plain(c), "accounts": k} for c, k in sorted(found.items(), key=lambda kv: -kv[1])[:6]],
             "members": [{"name": n["name"], "account": mask(n["account_no"]), "role": ROLE.get(n["role"], n["role"]),
                          "risk": round(n["risk"], 2), "status": n["status"]} for n in members[:10]],
+            "biggest_money_flows": [{"from": who(e["src"]), "to": who(e["dst"]), "amount": naira(e["amount"]),
+                                     "payments": e["count"], "by": e["channels"]}
+                                    for e in sorted(g["edges"], key=lambda e: -e["amount"])[:15]],
             "analyst_actions": [{"action": x["action"], "by": x["actor"], "at": x["at"][:16]} for x in actions[-5:]]}
 
 
@@ -157,24 +171,32 @@ TOOLS: dict[str, tuple[Any, str, dict]] = {
 
 
 def ring_facts(uow: NetworkUnitOfWork, s: Settings, ring: str) -> dict:
-    """Everything a voice briefing on one ring starts from: the story, the evidence, the members and the
-    biggest money movements on its map."""
+    """What a call that opens on one ring starts from. `ring` is the ring's id or number."""
     g = queries.ring_graph(cache.get(uow), ring)
-    sm = g["summary"]
-    nodes = {n["id"]: n for n in g["nodes"]}
+    return t_get_ring(uow, s, ring=str(g.get("number") or g["id"]))
 
-    def who(acc_id: str) -> str:
-        n = nodes[acc_id]
-        role = explain.ROLE.get(n["role"], (n["role"], ""))[0].lower()
-        return f"{n['name'] or 'unknown'} ({mask(n['account_no'])}, {role})"
 
-    flows = sorted(g["edges"], key=lambda e: -e["amount"])[:15]
-    return {**t_get_ring(uow, s, ring=str(g.get("number") or g["id"])),
-            "accounts_in_ring": sm["size"], "people_who_paid_in": sm["possible_victims"],
-            "money_paid_in": naira(sm["victim_inflow"]), "taken_out_as_cash": naira(sm["cash_out_total"]),
-            "first_seen": (sm["first_seen"] or "")[:10], "last_seen": (sm["last_seen"] or "")[:10],
-            "biggest_money_flows": [{"from": who(e["src"]), "to": who(e["dst"]), "amount": naira(e["amount"]),
-                                     "payments": e["count"], "by": e["channels"]} for e in flows]}
+SCREENS = {"/overview": "the overview: flagged accounts, open rings and payments checked", "/network": "the list of mule rings",
+           "/network/accounts": "the list of flagged accounts", "/network/alerts": "fraud-desk alerts",
+           "/network/decisions": "payments checked before the money left", "/network/ops": "data imports and the bank connection",
+           "/customers": "customers and their biometrics", "/settings": "settings", "/simulation": "the how-it-works simulation",
+           "/enrol": "voice enrolment", "/verify": "voice verification", "/iris": "iris enrolment and verification"}
+
+
+def current_page(uow: NetworkUnitOfWork, s: Settings, page: dict | None) -> dict:
+    """What the analyst has on screen right now, as the console last reported it."""
+    if not page or not page.get("path"):
+        return {"note": "the console has not said which page is open"}
+    path = page["path"].rstrip("/") or "/"
+    out: dict = {"page": SCREENS.get(path, path)}
+    if path.startswith("/network/rings/"):
+        a = cache.get(uow)
+        g = queries.ring_graph(a, path.rsplit("/", 1)[1])
+        out |= {"page": f"ring {g.get('number') or g['id'][:8]}, with its story and money flow map",
+                "ring": g.get("number") or g["id"][:8], "tip": "call get_ring with this ring for its facts"}
+        if page.get("account") and page["account"] in a.snapshot.accounts:
+            out["selected_account"] = _brief(a, page["account"])
+    return out
 
 
 def run_tool(name: str, args: dict | None, s: Settings, new_uow: UnitOfWorkFactory) -> tuple[dict, dict | None]:

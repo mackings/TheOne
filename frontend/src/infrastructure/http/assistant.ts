@@ -80,6 +80,10 @@ class LiveVoice implements LiveSession {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: "text", text }));
   }
 
+  sendPage(page: { path: string; account?: string | null }) {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: "page", ...page }));
+  }
+
   get open() {
     return this.ws?.readyState === WebSocket.OPEN;
   }

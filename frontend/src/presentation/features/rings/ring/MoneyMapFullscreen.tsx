@@ -24,7 +24,7 @@ export function MoneyMapFullscreen({ ring, selected, onSelect, onDetails, onBrie
   onSelect: (id: string | null) => void;
   /** Open the account panel for the selected account. */
   onDetails: () => void;
-  /** Start a voice briefing on this ring; absent while one is running. */
+  /** Ask Ziva to explain this ring. */
   onBriefing?: () => void;
   onClose: () => void;
 }) {

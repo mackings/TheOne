@@ -92,3 +92,19 @@ def test_ring_briefing_starts_from_the_ring_facts(client):
     prompt = ring_briefing(str(facts["ring"]), json.dumps(facts, ensure_ascii=False))
     assert prompt.startswith("Your voice matters most") and "Nigerian accent" in prompt and "not Pidgin" in prompt
     assert str(ring["number"]) in prompt and facts["money_paid_in"] in prompt
+
+
+def test_ziva_knows_the_page_the_analyst_is_on(client):
+    from app.assistant.application.tools import current_page
+
+    classic_ring(client)
+    ring = client.get("/network/rings").json()[0]
+    member = ring["top_connected"][0]["id"]
+    uow = new_uow()
+    try:
+        assert "not said" in current_page(uow, get_settings(), {})["note"]
+        assert current_page(uow, get_settings(), {"path": "/network/alerts"})["page"] == "fraud-desk alerts"
+        on_ring = current_page(uow, get_settings(), {"path": f"/network/rings/{ring['number']}", "account": member})
+    finally:
+        uow.close()
+    assert on_ring["ring"] == ring["number"] and on_ring["selected_account"]["name"]
