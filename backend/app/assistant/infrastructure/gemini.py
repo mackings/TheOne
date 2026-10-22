@@ -95,7 +95,9 @@ def live_config(s: Settings, system: str = LIVE, handle: str | None = None):
     tools[0].function_declarations.append(types.FunctionDeclaration(**CURRENT_PAGE))
     return types.LiveConnectConfig(
         response_modalities=["AUDIO"], system_instruction=system, tools=tools,
-        input_audio_transcription=types.AudioTranscriptionConfig(), output_audio_transcription=types.AudioTranscriptionConfig(),
+        input_audio_transcription=types.AudioTranscriptionConfig(
+            language_codes=[x.strip() for x in s.gemini_live_language_codes.split(",") if x.strip()] or None),
+        output_audio_transcription=types.AudioTranscriptionConfig(),
         speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(
             prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=s.gemini_voice))),
         session_resumption=types.SessionResumptionConfig(handle=handle),

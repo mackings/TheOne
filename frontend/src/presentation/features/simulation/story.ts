@@ -48,7 +48,7 @@ export interface Step {
 }
 
 export interface Scene {
-  key: "fraud" | "theone";
+  key: "theone";
   name: string;
   summary: string;
   nodes: NodeKey[];
@@ -94,131 +94,74 @@ const call = (w: World, p: number) => {
   if (p > 0.5) w.tag("ada", "“Send it to a safe account”", "bad");
 };
 
-export const SCENES: Scene[] = [
-  {
-    key: "fraud",
-    name: "Fraud without TheOne",
-    summary: "A fraudster talks Ada into paying a mule account, and the money is gone within minutes.",
-    nodes: ["fraudster", "ada", "bankA", "nibss", "bankB", "receiver", "mule2", "pos"],
-    labels: {
-      fraudster: "Fraudster", ada: "Ada", bankA: "Ada's bank", nibss: "NIBSS", bankB: "Bank B",
-      receiver: "“Safe account”", mule2: "Another mule", pos: "POS agent",
-    },
-    steps: [
-      {
-        actor: "Fraudster",
-        title: "A call that sounds like her bank",
-        body: "A fraudster calls Ada: “This is your bank. Your account has been hacked. Move your money to this safe account now.”",
-        run: call,
-      },
-      {
-        actor: "Ada's bank, NIBSS, Bank B",
-        title: "The transfer goes through normally",
-        body: "The “safe account” is a mule: an account used to receive stolen money. Name check, payment, credit all work as usual, so nothing looks wrong.",
-        run: (w, p) => {
-          w.link("ada", "bankA");
-          w.link("bankA", "nibss");
-          w.link("nibss", "bankB");
-          w.link("bankB", "receiver");
-          w.glow("receiver", "orange");
-          w.send("steal", ["ada", "bankA", "nibss", "bankB", "receiver"], p, "coin", "₦850,000");
-          if (arrived(p)) w.tag("receiver", "Mule account", "bad");
-        },
-      },
-      {
-        actor: "Mule accounts",
-        title: "Moved on and taken out as cash",
-        body: "Within minutes the mule sends it to another mule, who withdraws it at a POS agent. Once it is cash, it cannot be called back.",
-        run: (w, p) => {
-          w.link("receiver", "mule2");
-          w.link("mule2", "pos");
-          w.glow("mule2", "orange");
-          w.send("cash", ["receiver", "mule2", "pos"], p, "coin", "₦850,000", { fadeAtEnd: true });
-          if (arrived(p)) w.tag("pos", "Cash: gone", "bad");
-        },
-      },
-      {
-        actor: "Ada's bank",
-        title: "Too late",
-        body: "Ada realises hours later and reports it. Her bank asks Bank B to freeze the mule account, but it is already empty.",
-        run: (w, p) => {
-          w.glow("ada", "red");
-          w.tag("ada", "Fraud reported", "bad");
-          w.send("freeze", ["bankA", "nibss", "bankB"], p, "msg", "Please freeze it");
-          if (arrived(p)) w.tag("receiver", "₦0 left", "bad");
-        },
-      },
-    ],
+export const SCENE: Scene = {
+  key: "theone",
+  name: "Fraud with TheOne",
+  summary: "A fraudster talks Ada into paying a mule account, but Ada's bank asks TheOne before the money leaves.",
+  nodes: ["fraudster", "ada", "bankA", "nibss", "bankB", "receiver"],
+  labels: {
+    fraudster: "Fraudster", ada: "Ada", bankA: "Ada's bank", nibss: "NIBSS", bankB: "Bank B",
+    receiver: "“Safe account”", theone: "TheOne",
   },
-  {
-    key: "theone",
-    name: "Fraud with TheOne",
-    summary: "The same scam, but Ada's bank asks TheOne before the money leaves.",
-    nodes: ["fraudster", "ada", "bankA", "nibss", "bankB", "receiver"],
-    labels: {
-      fraudster: "Fraudster", ada: "Ada", bankA: "Ada's bank", nibss: "NIBSS", bankB: "Bank B",
-      receiver: "“Safe account”", theone: "TheOne",
+  steps: [
+    {
+      actor: "Fraudster",
+      title: "A call that sounds like her bank",
+      body: "A fraudster calls Ada: “This is your bank. Your account has been hacked. Move your money to this safe account now.”",
+      run: call,
     },
-    steps: [
-      {
-        actor: "Fraudster",
-        title: "The same call",
-        body: "The fraudster calls Ada with the same story and the same “safe account” to pay into.",
-        run: call,
+    {
+      actor: "Ada's bank → NIBSS",
+      title: "The name check happens as usual",
+      body: "Ada enters the account and ₦850,000. Her bank runs the name check through NIBSS and a real name comes back. Nothing has left yet.",
+      run: (w, p) => {
+        w.link("ada", "bankA");
+        w.link("bankA", "nibss");
+        w.link("nibss", "bankB");
+        w.send("ne", ["bankA", "nibss", "bankB", "nibss", "bankA"], p, "msg", "Name check");
       },
-      {
-        actor: "Ada's bank → NIBSS",
-        title: "The name check happens as usual",
-        body: "Ada enters the account and ₦850,000. Her bank runs the name check through NIBSS and a real name comes back. Nothing has left yet.",
-        run: (w, p) => {
-          w.link("ada", "bankA");
-          w.link("bankA", "nibss");
-          w.link("nibss", "bankB");
-          w.send("ne", ["bankA", "nibss", "bankB", "nibss", "bankA"], p, "msg", "Name check");
-        },
+    },
+    {
+      actor: "Ada's bank → TheOne",
+      title: "Before sending, the bank asks TheOne",
+      body: "Between the name check and the payment, Ada's bank asks TheOne: is it safe to send ₦850,000 to this account?",
+      run: (w, p) => {
+        w.show("theone", p);
+        w.link("bankA", "theone");
+        w.send("ask", ["bankA", "theone"], p, "msg", "Safe to send?");
       },
-      {
-        actor: "Ada's bank → TheOne",
-        title: "Before sending, the bank asks TheOne",
-        body: "Between the name check and the payment, Ada's bank asks TheOne: is it safe to send ₦850,000 to this account?",
-        run: (w, p) => {
-          w.show("theone", p);
-          w.link("bankA", "theone");
-          w.send("ask", ["bankA", "theone"], p, "msg", "Safe to send?");
-        },
+    },
+    {
+      actor: "TheOne",
+      length: 2.6,
+      focus: { on: "theone", zoom: 0.9 },
+      title: "TheOne works out the risk",
+      body: "Each warning sign on the receiving account adds to its risk score: 87 out of 100, above the hold level of 85. Ada's account and the payment are checked too. The answer: hold.",
+      run: (w, p) => {
+        w.glow("theone", "brand");
+        w.glow("receiver", "orange");
+        reckon(w, p);
+        w.send("answer", ["theone", "bankA"], part(p, 0.72, 0.94), "stop", "HOLD", { raw: true });
       },
-      {
-        actor: "TheOne",
-        length: 2.6,
-        focus: { on: "theone", zoom: 0.9 },
-        title: "TheOne works out the risk",
-        body: "Each warning sign on the receiving account adds to its risk score: 87 out of 100, above the hold level of 85. Ada's account and the payment are checked too. The answer: hold.",
-        run: (w, p) => {
-          w.glow("theone", "brand");
-          w.glow("receiver", "orange");
-          reckon(w, p);
-          w.send("answer", ["theone", "bankA"], part(p, 0.72, 0.94), "stop", "HOLD", { raw: true });
-        },
+    },
+    {
+      actor: "Ada's bank",
+      title: "The money is held",
+      body: "Ada's bank does not send the payment. The ₦850,000 never leaves her bank, so there is nothing to chase.",
+      run: (w, p) => {
+        w.barrier(p);
+        w.send("held", ["ada", "bankA", "gate"], p, "coin", "₦850,000", { stay: true });
+        if (arrived(p)) w.tag("bankA", "Payment held", "brand");
       },
-      {
-        actor: "Ada's bank",
-        title: "The money is held",
-        body: "Ada's bank does not send the payment. The ₦850,000 never leaves her bank, so there is nothing to chase.",
-        run: (w, p) => {
-          w.barrier(p);
-          w.send("held", ["ada", "bankA", "gate"], p, "coin", "₦850,000", { stay: true });
-          if (arrived(p)) w.tag("bankA", "Payment held", "brand");
-        },
+    },
+    {
+      actor: "Ada's bank → Ada",
+      title: "Ada is warned in time",
+      body: "Her app tells her the payment is on hold because it looks like a scam, and the fraud team calls her on a number they trust.",
+      run: (w, p) => {
+        w.send("warn", ["bankA", "ada"], p, "ack", "This looks like a scam");
+        if (arrived(p)) w.tag("ada", "Safe: ₦850,000 kept", "good");
       },
-      {
-        actor: "Ada's bank → Ada",
-        title: "Ada is warned in time",
-        body: "Her app tells her the payment is on hold because it looks like a scam, and the fraud team calls her on a number they trust.",
-        run: (w, p) => {
-          w.send("warn", ["bankA", "ada"], p, "ack", "This looks like a scam");
-          if (arrived(p)) w.tag("ada", "Safe: ₦850,000 kept", "good");
-        },
-      },
-    ],
-  },
-];
+    },
+  ],
+};

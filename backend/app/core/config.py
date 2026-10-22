@@ -95,6 +95,8 @@ class Settings(BaseSettings):
     gemini_text_fallbacks: str = "gemini-flash-latest,gemini-3-flash-preview"
     gemini_live_model: str = "gemini-3.1-flash-live-preview"
     gemini_voice: str = "Kore"
+    # What the analyst's speech is transcribed as. Left to auto-detect, noise and echo come out as other languages.
+    gemini_live_language_codes: str = "en-NG,en-US"
 
     # Access: API_KEYS is "key:role,..."; API_KEY alone acts as admin. With no keys the API is open (development only).
     api_keys: str = ""

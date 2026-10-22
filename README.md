@@ -12,6 +12,10 @@ Scam money always lands somewhere first, usually in a mule account that gets pai
 
 This is the architecture we're building towards. Today the repo has the detection engine, real-time payment checks, ring analysis, the analyst console, bank holds and blocks through an Open Banking Nigeria connector, and voice, iris and device step-up. Kafka, a graph database and a GNN come with bank-scale rollout. More on the code layout in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## AI usage
+
+I used AI to write the tests, to write the mathematical methods behind the risk scoring, and on the voice side: Ziva runs on Google's Gemini Live, and voice verification uses a pretrained speaker model. The full declaration is in [docs/AI_USAGE_DECLARATION.md](docs/AI_USAGE_DECLARATION.md).
+
 ## Running it
 
 ```bash

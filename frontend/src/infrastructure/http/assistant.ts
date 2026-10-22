@@ -9,6 +9,13 @@ export const httpAssistant: AssistantGateway = {
   live: (onEvent, opts) => new LiveVoice(onEvent, opts?.ring),
 };
 
+// Ziva's voice leaves the speakers and comes back in through the mic, and browsers do not reliably cancel audio played
+// through Web Audio. While she speaks (and briefly after), the mic sends silence unless the analyst is clearly talking
+// over her: a level of at least BARGE_IN for BARGE_IN_CHUNKS chunks in a row (128 ms each).
+const BARGE_IN = 0.4;
+const BARGE_IN_CHUNKS = 3;
+const ECHO_TAIL_MS = 300;
+
 function toBase64(bytes: Uint8Array): string {
   let s = "";
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -28,6 +35,8 @@ class LiveVoice implements LiveSession {
   private proc: ScriptProcessorNode | null = null;
   private playing = new Set<AudioBufferSourceNode>();
   private nextAt = 0;
+  private echoUntil = 0;
+  private loud = 0;
   level = 0;
 
   constructor(
@@ -70,6 +79,9 @@ class LiveVoice implements LiveSession {
         sum += v * v;
       }
       this.level = Math.min(1, Math.sqrt(sum / f.length) * 4);
+      const echo = this.playing.size > 0 || performance.now() < this.echoUntil;
+      this.loud = echo && this.level >= BARGE_IN ? this.loud + 1 : 0;
+      if (echo && this.loud < BARGE_IN_CHUNKS) pcm.fill(0);
       if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: "audio", data: toBase64(new Uint8Array(pcm.buffer)) }));
     };
     source.connect(this.proc);
@@ -126,7 +138,10 @@ class LiveVoice implements LiveSession {
     this.playing.add(src);
     src.onended = () => {
       this.playing.delete(src);
-      if (!this.playing.size) this.onEvent({ type: "speaking", on: false });
+      if (!this.playing.size) {
+        this.echoUntil = performance.now() + ECHO_TAIL_MS;
+        this.onEvent({ type: "speaking", on: false });
+      }
     };
   }
 

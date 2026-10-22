@@ -108,3 +108,50 @@ def test_ziva_knows_the_page_the_analyst_is_on(client):
     finally:
         uow.close()
     assert on_ring["ring"] == ring["number"] and on_ring["selected_account"]["name"]
+
+
+def test_ziva_sees_money_traced_into_other_banks(client, monkeypatch):
+    from datetime import timedelta
+
+    from app.core.timeutil import now
+    from app.network.infrastructure import nibss
+    from helpers.network import acct, ingest, tx
+
+    classic_ring(client)
+    t = now() - timedelta(hours=20)
+    ingest(client, [acct("OUT1", bank="058", name="Far Away")],
+           [tx("X1", "OUT1", 300_000, t + timedelta(minutes=5 * i), dst_bank="058") for i in range(3)])
+    client.post("/network/analyse")
+    monkeypatch.setattr(get_settings(), "network_nibss_connector", "http")
+    nibss.set_connector(nibss.HttpNibss("http://testserver/mock-nibss", "test", http=client))
+    try:
+        rid = client.get("/network/rings").json()[0]["id"]
+        assert client.post(f"/network/rings/{rid}/trace", json={"actor": "ada"}).json()["transfers_added"] > 0
+    finally:
+        nibss.set_connector(None)
+
+    s = get_settings()
+    ring = client.get("/network/rings").json()[0]
+    facts, _ = tools.run_tool("get_ring", {"ring": str(ring["number"])}, s, new_uow)
+    onward = [x for x in facts["money_to_other_banks"] if x["from"].startswith("Far Away")]
+    assert any(x["to"].startswith("Far Away") for x in facts["money_to_other_banks"]) and onward, facts["money_to_other_banks"]
+
+    # An account found only by the NIBSS trace can be looked up by name, with how it is connected.
+    name = onward[0]["to"].split(" (")[0]
+    acc, _ = tools.run_tool("explain_account", {"query": name}, s, new_uow)
+    assert acc["name"] == name and acc["found_by_nibss_trace"]
+    assert acc["money_in_from"][0]["account"].startswith("Far Away") and acc["money_in_from"][0]["first"]
+    assert any(m["place"] == "Traced at another bank" for m in acc["on_ring_maps"])
+
+
+def test_misheard_names_still_find_the_account(client):
+    classic_ring(client)
+    s = get_settings()
+    # Two names run together, both slightly misheard, as voice transcripts arrive.
+    found, _ = tools.run_tool("find_account", {"query": "Collecter and Layer Too"}, s, new_uow)
+    assert {"Collector", "Layer Two"} <= {m["name"] for m in found["matches"]}
+    assert "closest" in found["note"], "a loose match is flagged so Ziva checks it with the analyst"
+    exact, _ = tools.run_tool("find_account", {"query": "Layer Two"}, s, new_uow)
+    assert exact["matches"][0]["name"] == "Layer Two" and "note" not in exact
+    none, _ = tools.run_tool("find_account", {"query": "Zebedee Quorn"}, s, new_uow)
+    assert none["matches"] == []

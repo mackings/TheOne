@@ -3,6 +3,7 @@ small, masked facts for the model to speak from."""
 from __future__ import annotations
 
 import logging
+from difflib import SequenceMatcher
 from typing import Any
 
 from app.core.config import Settings
@@ -37,18 +38,80 @@ def _ring_id(a, prefix: str) -> str:
     return hits[0]
 
 
-def _find_accounts(a, query: str, limit: int = 5) -> list[str]:
-    q = query.lower().strip().lstrip("…")
-    hits = [v for v in a.snapshot.accounts.values() if q and (q in v.name.lower() or v.account_no.endswith(q))]
-    hits.sort(key=lambda v: -a.risk(v.id))
-    return [v.id for v in hits[:limit]]
+# How closely a misheard name must resemble an account name to count as a close match, and the lead an account on a
+# ring's money map gets over a look-alike elsewhere (Ogunleye heard as Ogugua scores 0.69; Emeka Obi scores 0.67).
+CLOSE_NAME = 0.65
+ON_MAP_BONUS = 0.05
+
+
+def _ring_maps(a) -> dict[str, list[tuple[object, str]]]:
+    """Every account on a ring's money map (members, victims, cash points, accounts at other banks), with its ring and role."""
+    out: dict[str, list[tuple[object, str]]] = {}
+    for r in a.rings:
+        for n in queries.ring_graph(a, r.id)["nodes"]:
+            out.setdefault(n["id"], []).append((r.number or r.id[:8], n["role"]))
+    return out
+
+
+def _find_accounts(a, query: str, limit: int = 5) -> tuple[list[str], bool]:
+    """Accounts by name or the last digits of the number, and whether the match is exact. Spoken questions arrive
+    misheard, or with two names run together, so when nothing matches exactly, a name also matches when it resembles a
+    run of words in the query. That looser search covers flagged accounts and accounts on a ring's money map, where
+    questions land, and its answers are only the closest names, for Ziva to check with the analyst."""
+    q = " ".join(query.lower().replace(",", " ").split()).lstrip("…")
+    if not q:
+        return [], True
+    maps = _ring_maps(a)
+    hits = [v for v in a.snapshot.accounts.values() if q in v.name.lower() or v.account_no.endswith(q)]
+    if hits:
+        # Common names repeat across banks: the one on a ring's money map is the one being asked about.
+        hits.sort(key=lambda v: (v.id not in maps, -a.risk(v.id)))
+        return [v.id for v in hits[:limit]], True
+    words = q.split()
+    scored = []
+    for acc_id in set(a.scores) | set(maps):
+        name = a.snapshot.accounts[acc_id].name.lower()
+        n = len(name.split())
+        if not n:
+            continue
+        best = max(SequenceMatcher(None, name, " ".join(words[i:i + n])).ratio() for i in range(max(1, len(words) - n + 1)))
+        if best >= CLOSE_NAME:
+            scored.append((best + (ON_MAP_BONUS if acc_id in maps else 0), a.risk(acc_id), acc_id))
+    scored.sort(reverse=True)
+    return [x[-1] for x in scored[:limit]], False
 
 
 def _brief(a, acc_id: str) -> dict:
     v = a.snapshot.accounts[acc_id]
     ring = next((r.number or r.id[:8] for r in a.rings if acc_id in r.members), None)
-    return {"name": v.name, "account": mask(v.account_no), "our_customer": v.home, "risk": round(a.risk(acc_id), 2),
-            "risk_band": BAND(a.risk(acc_id)), "status": v.status, "ring": ring}
+    return {"name": v.name, "account": mask(v.account_no), "bank": v.bank_code, "our_customer": v.home,
+            "risk": round(a.risk(acc_id), 2), "risk_band": BAND(a.risk(acc_id)), "status": v.status, "ring": ring}
+
+
+def _when(ts) -> str:
+    return ts.astimezone(explain.WAT).strftime("%-d %b %Y, %H:%M")
+
+
+def _who(a, acc_id: str) -> str:
+    v = a.snapshot.accounts[acc_id]
+    return f"{v.name or 'unknown'} ({'our bank' if v.home else 'bank ' + v.bank_code}, {mask(v.account_no)})"
+
+
+def _involvement(a, acc_id: str) -> dict:
+    """How one account is connected: its place on each ring's money map, who paid it, whom it paid, and when."""
+    def side(edges, key: str) -> list[dict]:
+        agg: dict[str, list] = {}
+        for e in edges:
+            x = agg.setdefault(getattr(e, key), [0, 0, e.ts, e.ts])
+            x[0], x[1], x[2], x[3] = x[0] + e.amount, x[1] + 1, min(x[2], e.ts), max(x[3], e.ts)
+        return [{"account": _who(a, other), "amount": naira(total), "payments": count, "first": _when(first), "last": _when(last)}
+                for other, (total, count, first, last) in sorted(agg.items(), key=lambda kv: -kv[1][0])[:8]]
+
+    ins, outs = a.snapshot.ins.get(acc_id, []), a.snapshot.outs.get(acc_id, [])
+    return {"on_ring_maps": [{"ring": ring, "place": explain.ROLE.get(role, (role, ""))[0], "meaning": explain.ROLE.get(role, ("", ""))[1]}
+                             for ring, role in _ring_maps(a).get(acc_id, [])],
+            "found_by_nibss_trace": any(e.ref.startswith("NIBSS-") for e in ins),
+            "money_in_from": side(ins, "src"), "money_out_to": side(outs, "dst")}
 
 
 def t_overview(uow: NetworkUnitOfWork, s: Settings, **_) -> dict:
@@ -97,24 +160,40 @@ def t_get_ring(uow, s, ring: str, **_) -> dict:
             "biggest_money_flows": [{"from": who(e["src"]), "to": who(e["dst"]), "amount": naira(e["amount"]),
                                      "payments": e["count"], "by": e["channels"]}
                                     for e in sorted(g["edges"], key=lambda e: -e["amount"])[:15]],
+            # Small sums that left for other banks never make the biggest flows, so they are listed on their own.
+            "money_to_other_banks": [{"from": who(e["src"]), "to": who(e["dst"]), "bank": nodes[e["dst"]]["bank_code"],
+                                      "amount": naira(e["amount"]), "payments": e["count"]}
+                                     for e in sorted(g["edges"], key=lambda e: -e["amount"])
+                                     if nodes[e["dst"]]["role"] in ("exit", "traced")][:20],
             "analyst_actions": [{"action": x["action"], "by": x["actor"], "at": x["at"][:16]} for x in actions[-5:]]}
+
+
+CLOSE_ONLY = "no exact match; these are the closest names to what was heard, so check with the analyst before going on"
 
 
 def t_find_account(uow, s, query: str, **_) -> dict:
     a = cache.get(uow)
-    ids = _find_accounts(a, query)
-    return {"matches": [_brief(a, x) for x in ids]} if ids else {"matches": [], "note": f"no account matches '{query}'"}
+    ids, exact = _find_accounts(a, query)
+    if not ids:
+        return {"matches": [], "note": f"no account matches '{query}'"}
+    return {"matches": [_brief(a, x) for x in ids], **({} if exact else {"note": CLOSE_ONLY})}
 
 
 def t_explain_account(uow, s, query: str, **_) -> dict:
     a = cache.get(uow)
-    ids = _find_accounts(a, query, 1)
+    ids, exact = _find_accounts(a, query)
     if not ids:
         return {"note": f"no account matches '{query}'"}
     d = queries.account_detail(uow, ids[0])
-    return {**_brief(a, ids[0]), "kyc_tier": d["kyc_tier"], "opened": (d["opened_at"] or "")[:10],
-            "money_in_30_days": naira(d["inbound_total"]), "money_out_30_days": naira(d["outbound_total"]),
-            "why_flagged": [{"finding": _plain(x["code"]), "seen": x["reason"]} for x in d["signals"]]}
+    out = {**({} if exact else {"note": CLOSE_ONLY}), **_brief(a, ids[0]), "kyc_tier": d["kyc_tier"], "opened": (d["opened_at"] or "")[:10],
+           "money_in_30_days": naira(d["inbound_total"]), "money_out_30_days": naira(d["outbound_total"]),
+           "why_flagged": [{"finding": _plain(x["code"]), "seen": x["reason"]} for x in d["signals"]],
+           **_involvement(a, ids[0])}
+    if len(ids) > 1:
+        maps = _ring_maps(a)
+        out["other_matches"] = [{**_brief(a, x), "on_ring_maps": [f"ring {ring}: {explain.ROLE.get(role, (role, ''))[0]}"
+                                                                  for ring, role in maps.get(x, [])]} for x in ids[1:]]
+    return out
 
 
 def t_list_alerts(uow, s, open_only: bool = True, limit: int = 5, **_) -> dict:
@@ -156,10 +235,12 @@ TOOLS: dict[str, tuple[Any, str, dict]] = {
         limit={"type": "INTEGER"})),
     "get_ring": (t_get_ring, "One ring: what happened in plain words, the evidence, its members and analyst actions.", {
         **_p(ring={"type": "STRING", "description": "ring number, e.g. 100004"}), "required": ["ring"]}),
-    "find_account": (t_find_account, "Find accounts by a name or the last digits of the account number.", {
+    "find_account": (t_find_account, "Find accounts by a name or the last digits of the account number, including accounts at "
+                     "other banks found by NIBSS traces. One name per call; close or misheard spellings still match.", {
         **_p(query={"type": "STRING"}), "required": ["query"]}),
-    "explain_account": (t_explain_account, "Why one account was flagged, with its money in and out.", {
-        **_p(query={"type": "STRING", "description": "name or last digits of the account number"}), "required": ["query"]}),
+    "explain_account": (t_explain_account, "One account in detail, at our bank or another: why it was flagged, where it sits on "
+                        "each ring's money map, who paid it and whom it paid, with amounts and times. One name per call.", {
+        **_p(query={"type": "STRING", "description": "one person's name, or the last digits of the account number"}), "required": ["query"]}),
     "list_alerts": (t_list_alerts, "Fraud-desk alerts such as duress signals and safe-limit breaches.", _p(
         open_only={"type": "BOOLEAN"}, limit={"type": "INTEGER"})),
     "list_decisions": (t_list_decisions, "Recent payment decisions made before money left.", _p(
@@ -195,7 +276,7 @@ def current_page(uow: NetworkUnitOfWork, s: Settings, page: dict | None) -> dict
         out |= {"page": f"ring {g.get('number') or g['id'][:8]}, with its story and money flow map",
                 "ring": g.get("number") or g["id"][:8], "tip": "call get_ring with this ring for its facts"}
         if page.get("account") and page["account"] in a.snapshot.accounts:
-            out["selected_account"] = _brief(a, page["account"])
+            out["selected_account"] = {**_brief(a, page["account"]), **_involvement(a, page["account"])}
     return out
 
 

@@ -1,11 +1,11 @@
 "use client";
 
-import { ArrowRight, ChevronLeft, ChevronRight, Pause, Play, RotateCcw, Settings2, ShieldCheck, Skull, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Pause, Play, RotateCcw, Settings2, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, PageHeader, Segmented, Tabs } from "@/presentation/components/ui";
+import { Button, PageHeader, Segmented } from "@/presentation/components/ui";
 import { cx } from "@/presentation/cx";
-import { SCENES, type Scene } from "./story";
+import { SCENE as scene } from "./story";
 
 // three.js needs the browser, so the 3D stage loads on the client only.
 const TransferScene = dynamic(() => import("./TransferScene").then((m) => m.TransferScene), {
@@ -13,7 +13,6 @@ const TransferScene = dynamic(() => import("./TransferScene").then((m) => m.Tran
   loading: () => <div className="h-full w-full animate-pulse bg-[var(--surface-2)]" />,
 });
 
-const ICON = { fraud: Skull, theone: ShieldCheck };
 // Milliseconds per step.
 const SPEED = { normal: 9000, slow: 13000 };
 
@@ -25,15 +24,16 @@ const LEGEND = [
   { swatch: "bg-[var(--brand)]", label: "TheOne" },
 ];
 
-type Options = { speed: keyof typeof SPEED; autoNext: boolean; legend: boolean };
+type Options = { speed: keyof typeof SPEED; legend: boolean };
 
 export function SimulationPage() {
-  const [sceneKey, setSceneKey] = useState<Scene["key"]>("fraud");
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [opts, setOpts] = useState<Options>({ speed: "normal", autoNext: true, legend: true });
+  const [opts, setOpts] = useState<Options>({ speed: "normal", legend: true });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [viewVersion, setViewVersion] = useState(0);
+  // Enlarged, the stage fills the whole window. It stays the same element, so the story keeps playing.
+  const [big, setBig] = useState(false);
   // Large screens have room for the colour key above the controls.
   const [wide, setWide] = useState(true);
   useEffect(() => {
@@ -43,9 +43,7 @@ export function SimulationPage() {
     q.addEventListener("change", on);
     return () => q.removeEventListener("change", on);
   }, []);
-  const scene = SCENES.find((s) => s.key === sceneKey)!;
   const last = step === scene.steps.length - 1;
-  const nextScene = SCENES[SCENES.findIndex((s) => s.key === sceneKey) + 1];
 
   // Play on arrival, unless the person prefers less motion.
   useEffect(() => {
@@ -53,17 +51,10 @@ export function SimulationPage() {
     return () => clearTimeout(id);
   }, []);
 
-  const choose = useCallback((key: Scene["key"]) => {
-    setSceneKey(key);
-    setStep(0);
-    setPlaying(true);
-  }, []);
-
   const onEnd = useCallback(() => {
     if (step < scene.steps.length - 1) setStep(step + 1);
-    else if (opts.autoNext && nextScene) setTimeout(() => choose(nextScene.key), 1200);
     else setPlaying(false);
-  }, [step, scene, opts.autoNext, nextScene, choose]);
+  }, [step]);
 
   const go = (i: number) => setStep(Math.max(0, Math.min(scene.steps.length - 1, i)));
 
@@ -75,27 +66,32 @@ export function SimulationPage() {
       else if (e.key === " ") {
         e.preventDefault();
         setPlaying((p) => !p);
-      } else if (e.key === "Escape") setSettingsOpen(false);
+      } else if (e.key === "Escape") {
+        setSettingsOpen(false);
+        setBig(false);
+      }
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [scene]);
+  }, []);
 
   return (
     <>
       <PageHeader
         title="How TheOne stops fraud"
-        subtitle="Watch a scam take a customer's money through NIBSS and mule accounts, then see the same scam stopped inside the bank before the money leaves."
-      />
-      <Tabs<Scene["key"]>
-        value={sceneKey}
-        onChange={choose}
-        tabs={SCENES.map((s) => ({ value: s.key, label: s.name, icon: ICON[s.key] }))}
+        subtitle="Watch a scammer talk a customer into paying a mule account, and see TheOne stop the payment inside the bank before the money leaves."
       />
 
       <div className="border-b border-[var(--line)] bg-[var(--surface)]">
         {/* The stage: full width, with the step text and controls on top of it. */}
-        <div className="relative h-[480px] sm:h-[600px] lg:h-[calc(100vh-230px)] lg:min-h-[620px]">
+        <div
+          className={cx(
+            big ? "fixed inset-0 z-50 bg-[var(--surface)]" : "relative h-[480px] sm:h-[600px] lg:h-[calc(100vh-170px)] lg:min-h-[620px]",
+          )}
+          role={big ? "dialog" : undefined}
+          aria-modal={big || undefined}
+          aria-label={big ? "How TheOne stops fraud, enlarged" : undefined}
+        >
           <TransferScene
             scene={scene}
             step={step}
@@ -103,11 +99,20 @@ export function SimulationPage() {
             onEnd={onEnd}
             stepMs={SPEED[opts.speed]}
             viewVersion={viewVersion}
-            insets={{ top: 56, bottom: opts.legend && wide ? 112 : 84, right: wide && sceneKey === "theone" ? 380 : 0 }}
+            insets={{ top: 56, bottom: opts.legend && wide ? 112 : 84, right: wide ? 380 : 0 }}
             className="absolute inset-0"
           />
 
-          <div className="absolute right-4 top-4 lg:right-6 lg:top-5">
+          <div className="absolute right-4 top-4 flex items-center gap-2 lg:right-6 lg:top-5">
+            <button
+              onClick={() => setBig(!big)}
+              aria-label={big ? "Exit full screen" : "Enlarge"}
+              title={big ? "Exit full screen (Esc)" : "Enlarge"}
+              className="flex h-9 items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 text-sm text-[var(--ink-2)] shadow-md transition-colors hover:text-[var(--ink)]"
+            >
+              {big ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+              <span className="hidden sm:inline">{big ? "Exit full screen" : "Enlarge"}</span>
+            </button>
             <SettingsButton
               open={settingsOpen}
               setOpen={setSettingsOpen}
@@ -160,11 +165,6 @@ export function SimulationPage() {
             <span className="hidden text-xs tabular-nums text-[var(--muted)] sm:inline">
               {step + 1} / {scene.steps.length}
             </span>
-            {last && !playing && nextScene && (
-              <Button size="sm" icon={ArrowRight} onClick={() => choose(nextScene.key)}>
-                {nextScene.name}
-              </Button>
-            )}
           </div>
         </div>
 
@@ -219,7 +219,6 @@ function SettingsButton({ open, setOpen, opts, setOpts, onResetView }: {
                 options={[{ value: "normal", label: "Normal" }, { value: "slow", label: "Slow" }]}
               />
             </div>
-            <Toggle label="Play the next story" checked={opts.autoNext} onChange={(autoNext) => setOpts({ ...opts, autoNext })} />
             <Toggle label="Show colour key" checked={opts.legend} onChange={(legend) => setOpts({ ...opts, legend })} />
             <Button size="sm" icon={RotateCcw} onClick={onResetView}>Reset the view</Button>
           </div>
