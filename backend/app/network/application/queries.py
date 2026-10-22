@@ -145,9 +145,40 @@ def ring_actions(uow: NetworkUnitOfWork, ring_id: str) -> list[dict]:
 
 
 def ring_detail(uow: NetworkUnitOfWork, ring_id: str) -> dict:
-    g = ring_graph(cache.get(uow), ring_id)
+    a = cache.get(uow)
+    g = ring_graph(a, ring_id)
     g["actions"] = ring_actions(uow, g["id"])
+    g["stopped_payments"] = add_stopped(uow, a, g)
     return g
+
+
+STOPPED_SHOWN = 50
+
+
+def add_stopped(uow: NetworkUnitOfWork, a: Analysis, g: dict) -> list[dict]:
+    """Payments TheOne held on their way into the ring. Each goes on the money map as a "stopped" line from its
+    sender, but never into the ring's totals: the money did not move."""
+    members = sorted(g["summary"]["roles"])
+    nodes = {n["id"]: n for n in g["nodes"]}
+    lines: dict[tuple[str, str], dict] = {}
+    out = []
+    for d in uow.decisions.stopped_to(members, STOPPED_SHOWN):
+        src, dst = account_brief(a, d.src_account_id, uow), account_brief(a, d.dst_account_id, uow)
+        if d.src_account_id not in nodes:
+            nodes[d.src_account_id] = {**{k: src[k] for k in ("id", "name", "bank_code", "account_no", "home", "status", "risk")},
+                                       "role": "victim", "signals": []}
+            g["nodes"].append(nodes[d.src_account_id])
+        at = d.created_at.isoformat()
+        e = lines.setdefault((d.src_account_id, d.dst_account_id), {
+            "src": d.src_account_id, "dst": d.dst_account_id, "amount": 0, "count": 0, "channels": [d.channel],
+            "first": at, "last": at, "stopped": True})
+        e["amount"] += d.amount_kobo
+        e["count"] += 1
+        e["first"], e["last"] = min(e["first"], at), max(e["last"], at)
+        out.append({"decision_id": d.id, "at": at, "amount": d.amount_kobo, "status": d.status,
+                    "from": src, "to": dst, "reason": (d.reasons or [""])[0]})
+    g["edges"].extend(lines.values())
+    return out
 
 
 def ring_key(uow: NetworkUnitOfWork, ring_id: str) -> str:
@@ -168,6 +199,13 @@ def search_accounts(a: Analysis, q: str, limit: int = 20) -> list[dict]:
     hits = [v for v in a.snapshot.accounts.values() if ql in v.name.lower() or ql in v.account_no.lower()]
     hits.sort(key=lambda v: -a.risk(v.id))
     return [account_brief(a, v.id) for v in hits[: max(1, min(limit, 100))]]
+
+
+def lookup_account(uow: NetworkUnitOfWork, bank_code: str, account_no: str) -> dict:
+    acc = uow.accounts.find(bank_code.strip(), account_no.strip())
+    if acc is None:
+        raise NotFound("no account with that number at this bank")
+    return account_brief(cache.get(uow), acc.id, uow)
 
 
 def account_detail(uow: NetworkUnitOfWork, account_id: str) -> dict:

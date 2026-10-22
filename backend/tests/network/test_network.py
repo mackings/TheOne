@@ -270,3 +270,55 @@ def test_ring_number_works_everywhere(client):
     by_no, by_id = client.get(f"/network/rings/{no}").json(), client.get(f"/network/rings/{ring['id']}").json()
     assert by_no["id"] == by_id["id"] and by_no["actions"] and by_no["actions"] == by_id["actions"]
     assert f"Ring {no}" in client.get(f"/network/rings/{no}/evidence").text
+
+
+def test_a_stopped_payment_shows_on_the_ring_it_was_heading_to(client):
+    classic_ring(client)
+    ring = client.get("/network/rings").json()[0]
+    before = client.get(f"/network/rings/{ring['id']}").json()
+    # A new customer, not yet on the map, tries to pay the collector.
+    ingest(client, [acct("NEWV", name="Ngozi Okeke")])
+    held = decide(client, "NEWV", "C1", 120_000)
+    assert held["decision"] == "HOLD" and held["beneficiary_ring"]["id"] == ring["id"]
+    assert held["beneficiary_ring"]["number"] == ring["number"]
+    decide(client, "V1", "V2", 5_000)  # an allowed payment between two ordinary customers stays off the ring
+
+    after = client.get(f"/network/rings/{ring['id']}").json()
+    assert [p["decision_id"] for p in after["stopped_payments"]] == [held["id"]]
+    stopped = after["stopped_payments"][0]
+    assert stopped["amount"] == 12_000_000 and stopped["from"]["name"] == "Ngozi Okeke" and stopped["to"]["name"] == "Collector"
+    line = [e for e in after["edges"] if e.get("stopped")]
+    assert len(line) == 1 and line[0]["dst"] == held["beneficiary"]["id"] and line[0]["amount"] == 12_000_000
+    assert any(n["id"] == held["source"]["id"] and n["role"] == "victim" for n in after["nodes"]), "the sender is drawn on the map"
+    # The money never moved, so the ring's own totals are unchanged.
+    assert after["summary"]["victim_inflow"] == before["summary"]["victim_inflow"]
+    assert after["summary"]["possible_victims"] == before["summary"]["possible_victims"]
+
+    ok = decide(client, "V1", "V2", 5_000)
+    assert ok["beneficiary_ring"] is None
+
+
+def test_name_enquiry_finds_the_account_holder(client):
+    classic_ring(client)
+    found = client.get("/network/accounts/lookup", params={"bank_code": HOME, "account_no": "C1"})
+    assert found.status_code == 200 and found.json()["name"] == "Collector" and found.json()["ring_id"]
+    missing = client.get("/network/accounts/lookup", params={"bank_code": "058", "account_no": "C1"})
+    assert missing.status_code == 404
+
+
+def test_simulated_mule_payment_is_stopped_and_forms_a_ring(client):
+    body = {"bank_code": "058", "account_no": "0123456789", "account_name": "Samuel Aluko", "amount_kobo": 85_000_000}
+    out = client.post("/network/simulate/mule-payment", json=body)
+    assert out.status_code == 200, out.text
+    d = out.json()
+    assert d["decision"] == "HOLD" and d["beneficiary"]["name"] == "Samuel Aluko" and d["beneficiary"]["bank_code"] == "058"
+    ring = client.get(f"/network/rings/{d['beneficiary_ring']['id']}").json()
+    assert len(ring["summary"]["roles"]) >= 3, "the mule and the accounts on its phone form a ring"
+    assert [p["decision_id"] for p in ring["stopped_payments"]] == [d["id"]]
+    assert ring["stopped_payments"][0]["from"]["name"] == "Demo Customer"
+
+    # Paying the same account again does not plant its history twice.
+    transfers = client.get("/network/stats").json()["transfers"]
+    again = client.post("/network/simulate/mule-payment", json=body).json()
+    assert again["decision"] == "HOLD" and again["beneficiary_ring"]["id"] == d["beneficiary_ring"]["id"]
+    assert client.get("/network/stats").json()["transfers"] == transfers

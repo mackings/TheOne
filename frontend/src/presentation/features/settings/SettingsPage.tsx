@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertOctagon, CheckCircle2, Cpu, Landmark, Sparkles, UserRound } from "lucide-react";
+import { AlertOctagon, CheckCircle2, Cpu, Landmark, PlayCircle, Sparkles, UserRound } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge, Button, DetailList, Field, InlineError, Input, PageHeader, riskLevel, Section, useToast } from "@/presentation/components/ui";
 import { fmtDate } from "@/presentation/format";
@@ -14,6 +15,7 @@ const on = (yes: boolean, label: string, off = "Not connected") => (
 );
 
 export function SettingsPage() {
+  const router = useRouter();
   const api = useIdentity();
   const assistantApi = useAssistant();
   const documents = useDocuments();
@@ -46,6 +48,10 @@ export function SettingsPage() {
             Save
           </Button>
         </div>
+      </Section>
+
+      <Section title="How it works" description="A short animated story: a scam payment, and how TheOne stops it before the money leaves the bank.">
+        <Button icon={PlayCircle} onClick={() => router.push("/simulation")}>Watch how it works</Button>
       </Section>
 
       <Section title="How TheOne works here" description="What it checks, and when it steps in." flush>

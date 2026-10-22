@@ -4,12 +4,11 @@ import {
   ArrowLeftRight,
   BellRing,
   Database,
-  House,
   LayoutDashboard,
   type LucideIcon,
   Menu,
   Network,
-  PlayCircle,
+  Send,
   Settings,
   ShieldCheck,
   UserRound,
@@ -32,23 +31,17 @@ const NAV: { group: string; items: Item[] }[] = [
   {
     group: "",
     items: [
-      { href: "/", label: "Home", icon: House },
-      { href: "/overview", label: "Overview", icon: LayoutDashboard },
-      { href: "/simulation", label: "How it works", icon: PlayCircle },
+      { href: "/network/simulate", label: "Make a payment", icon: Send },
+      { href: "/network", label: "Mule rings", icon: Network },
+      { href: "/network/accounts", label: "Accounts", icon: Users },
     ],
   },
   {
     group: "Watch",
     items: [
+      { href: "/overview", label: "Overview", icon: LayoutDashboard },
       { href: "/network/alerts", label: "Alerts", icon: BellRing, badge: "alerts" },
       { href: "/network/decisions", label: "Payments checked", icon: ArrowLeftRight },
-    ],
-  },
-  {
-    group: "Investigate",
-    items: [
-      { href: "/network", label: "Mule rings", icon: Network },
-      { href: "/network/accounts", label: "Accounts", icon: Users },
     ],
   },
   { group: "Customers", items: [{ href: "/customers", label: "Customers", icon: UserRound }] },
@@ -67,6 +60,8 @@ const CUSTOMER_PAGES = ["/enrol", "/verify", "/iris"];
 function isActive(path: string, href: string) {
   if (href === "/") return path === "/";
   if (href === "/network") return path === "/network" || path.startsWith("/network/rings");
+  // "How it works" lives under Settings.
+  if (href === "/settings") return path === "/settings" || path.startsWith("/simulation");
   if (href === "/customers" && CUSTOMER_PAGES.some((p) => path.startsWith(p))) return true;
   return path === href || path.startsWith(href + "/");
 }

@@ -113,7 +113,18 @@ export type RingNode = {
   signals: NetSignal[];
 };
 
-export type RingEdge = { src: string; dst: string; amount: number; count: number; channels: string[]; first: string; last: string };
+/** `stopped`: a payment TheOne held on its way into the ring. It is drawn, but the money never moved. */
+export type RingEdge = { src: string; dst: string; amount: number; count: number; channels: string[]; first: string; last: string; stopped?: boolean };
+
+export type StoppedPayment = {
+  decision_id: string;
+  at: string;
+  amount: number;
+  status: string;
+  from: AccountBrief;
+  to: AccountBrief;
+  reason: string;
+};
 
 export type RingDetail = {
   id: string;
@@ -137,6 +148,7 @@ export type RingDetail = {
   edges: RingEdge[];
   identifier_links: { kind: string; masked: string; accounts: string[] }[];
   actions: { at: string; actor: string; action: string; accounts: string[]; note: string | null }[];
+  stopped_payments: StoppedPayment[];
 };
 
 export type Evaluation = {
@@ -177,6 +189,8 @@ export type NetDecision = {
   beneficiary_signals: NetSignal[];
   sender_signals: NetSignal[];
   analysis_age_s: number | null;
+  /** The ring the receiver belongs to, when it is in one (answers from a payment check only). */
+  beneficiary_ring?: { id: string; number: number | null } | null;
 };
 
 export type NetAlert = {

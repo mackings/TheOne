@@ -107,7 +107,11 @@ export function shortNaira(kobo: number) {
 }
 
 /** Turn a ring into a short, numbered story a branch manager or a court could follow. */
-export function ringStory(r: RingDetail): StoryStep[] {
+/** The ring without the payments TheOne stopped: they are drawn on the map, but that money never moved. */
+const moved = (r: RingDetail): RingDetail => ({ ...r, edges: r.edges.filter((e) => !e.stopped) });
+
+export function ringStory(ring: RingDetail): StoryStep[] {
+  const r = moved(ring);
   const byId = new Map(r.nodes.map((n) => [n.id, n]));
   const role = (id: string) => byId.get(id)?.role;
   const isVictim = (id: string) => ["victim", "source"].includes(role(id) ?? "");
@@ -212,7 +216,8 @@ export type PlanStep = { text: string; detail: string; action?: PlanAction; labe
 export type Plan = { tone: "critical" | "serious" | "info" | "good"; urgency: string; headline: string; steps: PlanStep[] };
 
 /** What to do next, as numbered steps with the button for each, worked out from the ring itself. */
-export function actionPlan(r: RingDetail): Plan {
+export function actionPlan(ring: RingDetail): Plan {
+  const r = moved(ring);
   const byId = new Map(r.nodes.map((n) => [n.id, n]));
   const members = r.nodes.filter((n) => r.summary.roles[n.id]);
   const ours = members.filter((n) => n.home);
@@ -241,17 +246,28 @@ export function actionPlan(r: RingDetail): Plan {
     tone: urgent ? "critical" : "serious",
     urgency: urgent ? "Act today" : "Review today",
     headline: urgent ? "Stop the money, then confirm with the victims" : "Check before more money leaves",
-    steps: [
-      { text: `Stop money leaving the ${ours.length} account${ours.length === 1 ? "" : "s"} at our bank for 24 hours`,
-        detail: "Payments out are held and the bank freezes the balance. Everything returns to normal on its own after 24 hours.",
-        action: "watchlist", label: "Watch for 24 hours", done: watched },
-      call,
-      { text: "If they confirm the fraud, confirm the ring",
-        detail: "This marks the accounts as mules and the bank blocks all money going out of them. A supervisor approves it.",
-        action: "confirm", label: "Confirm the ring" },
-      ...(otherBanks && !traced ? [trace] : []),
-      pack,
-    ],
+    steps: ours.length
+      ? [
+          { text: `Stop money leaving the ${ours.length} account${ours.length === 1 ? "" : "s"} at our bank for 24 hours`,
+            detail: "Payments out are held and the bank freezes the balance. Everything returns to normal on its own after 24 hours.",
+            action: "watchlist", label: "Watch for 24 hours", done: watched },
+          call,
+          { text: "If they confirm the fraud, confirm the ring",
+            detail: "This marks the accounts as mules and the bank blocks all money going out of them. A supervisor approves it.",
+            action: "confirm", label: "Confirm the ring" },
+          ...(otherBanks && !traced ? [trace] : []),
+          pack,
+        ]
+      // None of the ring's accounts are at our bank, so only their own banks can freeze them.
+      : [
+          { text: "Ask the receiving banks to freeze these accounts",
+            detail: "All the accounts in this ring are at other banks, so the hold has to be placed there. Send them the evidence pack.",
+            action: "evidence", label: "Open evidence pack" },
+          call,
+          { text: "If they confirm the fraud, confirm the ring",
+            detail: "This marks the accounts as mules, so any payment to them from our customers is held. A supervisor approves it.",
+            action: "confirm", label: "Confirm the ring" },
+        ],
   };
 }
 

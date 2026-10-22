@@ -197,6 +197,15 @@ class DecisionRepository(_Repository[TransferDecision]):
         return list(self.s.scalars(select(c.context).where(c.src_account_id == account_id)
                                    .order_by(c.created_at.desc()).limit(limit)))
 
+    def stopped_to(self, account_ids: list[str], limit: int) -> list[TransferDecision]:
+        """Payments held on their way to these accounts, or blocked by an analyst; newest first."""
+        if not account_ids:
+            return []
+        c = t.decisions.c
+        return list(self.s.scalars(select(TransferDecision).where(
+            c.dst_account_id.in_(account_ids), (c.decision == "HOLD") | (c.status == "blocked"))
+            .order_by(c.created_at.desc()).limit(limit)))
+
     def count(self) -> int:
         return self.s.scalar(select(func.count()).select_from(t.decisions)) or 0
 

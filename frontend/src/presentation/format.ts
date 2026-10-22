@@ -29,7 +29,7 @@ export const pct = (v: number | null | undefined) => (v == null ? "–" : `${Mat
 export const ringName = (r: { id: string; number?: number | null }) => (r.number ? `Ring ${r.number}` : `Ring ${r.id.slice(0, 8)}`);
 
 // Bank codes as they appear in Nigerian transfer records (CBN and NIBSS institution codes).
-const BANKS: Record<string, string> = {
+export const BANKS: Record<string, string> = {
   "044": "Access Bank", "023": "Citibank", "050": "Ecobank", "070": "Fidelity Bank", "011": "First Bank", "214": "FCMB",
   "058": "GTBank", "030": "Heritage Bank", "301": "Jaiz Bank", "082": "Keystone Bank", "076": "Polaris Bank",
   "101": "Providus Bank", "221": "Stanbic IBTC", "068": "Standard Chartered", "232": "Sterling Bank", "032": "Union Bank",

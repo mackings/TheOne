@@ -51,6 +51,8 @@ export const httpNetwork: NetworkGateway = {
       }),
     ),
   decisions: (limit = 20) => request<NetDecision[]>(`/network/decisions?limit=${limit}`),
+  simulateMulePayment: (bank_code: string, account_no: string, account_name: string, amount_kobo: number) =>
+    request<NetDecision>("/network/simulate/mule-payment", json({ bank_code, account_no, account_name, amount_kobo })),
   reviewDecision: (id: string, outcome: "release" | "block", actor: string, note?: string) =>
     request<NetDecision>(`/network/decisions/${id}/review`, json({ outcome, actor, note })),
   accounts: (flagged: boolean, limit = 1000) =>

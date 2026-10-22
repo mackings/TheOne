@@ -129,6 +129,10 @@ def decide(uow: NetworkUnitOfWork, body: dict, s: Settings) -> dict:
     out["beneficiary_signals"] = signal_dicts(dst_sigs)
     out["sender_signals"] = signal_dicts(sa.signals)
     out["analysis_age_s"] = round((now() - analysis.computed_at).total_seconds(), 1)
+    # The ring the receiver belongs to, where a stopped payment now shows on the money map.
+    rid = analysis.ring_of.get(dst.id)
+    out["beneficiary_ring"] = ({"id": rid, "number": next((r.number for r in analysis.rings if r.id == rid), None)}
+                               if rid else None)
     return out
 
 

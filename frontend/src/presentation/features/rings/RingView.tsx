@@ -1,6 +1,6 @@
 "use client";
 
-import { AudioLines, Check, Maximize2, Copy, FileSearch, FileText, History, Lightbulb, Network, Route, Users, XCircle } from "lucide-react";
+import { AudioLines, Check, Maximize2, Copy, FileSearch, FileText, History, Lightbulb, ListChecks, Network, Route, Users, XCircle } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -31,12 +31,13 @@ import { RingAccounts } from "./ring/RingAccounts";
 import { RingActivity } from "./ring/RingActivity";
 import { RingEvidence } from "./ring/RingEvidence";
 import { RingGraph } from "./RingGraph";
+import { RingNextSteps } from "./ring/RingNextSteps";
 import { RingSummary } from "./ring/RingSummary";
 import { useDocuments, useNetwork } from "@/presentation/hooks/gateways";
 import { useZiva } from "@/presentation/features/ziva/ZivaProvider";
 import { useZivaSpotlight } from "@/presentation/features/ziva/useZivaSpotlight";
 
-type Tab = "summary" | "flow" | "evidence" | "accounts" | "activity";
+type Tab = "summary" | "flow" | "evidence" | "accounts" | "activity" | "next";
 
 export function RingView() {
   const documents = useDocuments();
@@ -192,10 +193,11 @@ export function RingView() {
               { value: "evidence", label: `Evidence (${findings.length})`, icon: FileSearch },
               { value: "accounts", label: `Accounts (${members.length})`, icon: Users },
               { value: "activity", label: "Activity", icon: History },
+              { value: "next", label: "Next steps", icon: ListChecks },
             ]}
           />
 
-          {tab === "summary" && <RingSummary r={r} story={story} findings={findings} onPlan={onPlan} onSeeEvidence={() => setTab("evidence")} />}
+          {tab === "summary" && <RingSummary r={r} story={story} />}
 
           {tab === "flow" && (
             <Section
@@ -215,6 +217,7 @@ export function RingView() {
           {tab === "evidence" && <RingEvidence findings={findings} onSelect={setSelected} />}
           {tab === "accounts" && <RingAccounts members={members} selected={selected} onSelect={setSelected} onAct={setAct} />}
           {tab === "activity" && <RingActivity r={r} traces={traces.data} />}
+          {tab === "next" && <RingNextSteps r={r} onPlan={onPlan} />}
         </>
       )}
 

@@ -143,14 +143,17 @@ export function RingGraph({
     const colOf = (id: string) => pos.get(id)?.col ?? -1;
     const totals = COLUMNS.map((_, ci) =>
       view.edges.reduce((sum, e) => {
+        if (e.stopped) return sum;
         const a = colOf(e.src);
         const b = colOf(e.dst);
         if (ci === 0) return a === 0 && b > 0 ? sum + e.amount : sum;
         return b === ci && a < ci ? sum + e.amount : sum;
       }, 0),
     );
-    const counts = cols.map((list) => list.reduce((n, x) => n + (x.id.startsWith("more:") ? Number(x.name.match(/\d+/)?.[0] ?? 0) : 1), 0));
-    const maxAmt = Math.max(1, ...view.edges.map((e) => e.amount));
+    // Someone whose only payment was stopped never paid in, so they are drawn but not counted.
+    const moved = new Set(view.edges.filter((e) => !e.stopped).flatMap((e) => [e.src, e.dst]));
+    const counts = cols.map((list) => list.reduce((n, x) => n + (x.id.startsWith("more:") ? Number(x.name.match(/\d+/)?.[0] ?? 0) : moved.has(x.id) ? 1 : 0), 0));
+    const maxAmt = Math.max(1, ...view.edges.filter((e) => !e.stopped).map((e) => e.amount));
     const chars = Math.max(14, Math.floor((colW - 40) / 6.6));
     const lastChars = Math.floor((LABEL_W - 36) / 6.8);
     return { pos, colW, height: TOP + region + 12, natural: TOP + rows * ROW_H + 12, maxAmt, totals, counts, chars, lastChars };
@@ -242,6 +245,28 @@ export function RingGraph({
             const d = same
               ? `M ${a.x + 10} ${a.y} C ${a.x + 70} ${a.y}, ${b.x + 70} ${b.y}, ${b.x + 10} ${b.y}`
               : `M ${a.x + 10} ${a.y} C ${(a.x + b.x) / 2} ${a.y}, ${(a.x + b.x) / 2} ${b.y}, ${b.x - 10} ${b.y}`;
+            if (e.stopped) {
+              // A payment TheOne held, with a stop mark most of the way along and its label above and to the right,
+              // clear of the senders' names.
+              const t = 0.8;
+              const cx = same ? a.x + 70 : (a.x + b.x) / 2;
+              const ex = same ? b.x + 10 : b.x - 10;
+              const mx = (1 - t) ** 3 * (a.x + 10) + 3 * (1 - t) ** 2 * t * cx + 3 * (1 - t) * t * t * (same ? b.x + 70 : cx) + t ** 3 * ex;
+              const my = (1 - t) ** 3 * a.y + 3 * (1 - t) ** 2 * t * a.y + 3 * (1 - t) * t * t * b.y + t ** 3 * b.y;
+              return (
+                <g key={`${e.src}-${e.dst}-stopped`} opacity={selected && !hot ? 0.3 : 1}>
+                  <path d={d} fill="none" stroke="var(--brand)" strokeWidth={3} strokeDasharray="8 6" strokeLinecap="round" />
+                  <circle cx={mx} cy={my} r={9} fill="var(--brand)" stroke="var(--surface)" strokeWidth={2} />
+                  <path d={`M ${mx - 3.5} ${my - 3.5} L ${mx + 3.5} ${my + 3.5} M ${mx + 3.5} ${my - 3.5} L ${mx - 3.5} ${my + 3.5}`}
+                    stroke="var(--surface)" strokeWidth={2} strokeLinecap="round" />
+                  <text x={mx + 12} y={my - 13} fontSize={11.5} fontWeight={700} fill="var(--brand)"
+                    stroke="var(--surface)" strokeWidth={4} strokeLinejoin="round" paintOrder="stroke">
+                    Stopped · {compact(e.amount)}
+                  </text>
+                  <title>{`Stopped by TheOne: ${naira(e.amount)} in ${e.count} payment${e.count > 1 ? "s" : ""}. The money never left the sender's bank.`}</title>
+                </g>
+              );
+            }
             return (
               <path
                 key={`${e.src}-${e.dst}`}
@@ -305,6 +330,12 @@ export function RingGraph({
           <svg width="28" height="10" aria-hidden><path d="M2 5 H26" stroke="var(--line-strong)" strokeWidth="6" strokeLinecap="round" /></svg>
           Thicker line, more money
         </span>
+        {view.edges.some((e) => e.stopped) && (
+          <span className="inline-flex items-center gap-2">
+            <svg width="28" height="10" aria-hidden><path d="M2 5 H26" stroke="var(--brand)" strokeWidth="3" strokeDasharray="6 4" strokeLinecap="round" /></svg>
+            Payment TheOne stopped
+          </span>
+        )}
         <span className="inline-flex items-center gap-2">
           <svg width="16" height="16" aria-hidden><circle cx="8" cy="8" r="6.5" fill="none" stroke="var(--ink)" strokeDasharray="3 3" /></svg>
           Uses the same phone or ID as the selected account
@@ -325,8 +356,11 @@ function collapse(ring: RingDetail): { nodes: RingNode[]; edges: RingDetail["edg
   const merged = new Map<string, string>();
   const extra: RingNode[] = [];
   const tail: Record<string, string> = { cash_point: "cash points", exit: "accounts at other banks", traced: "traced accounts", victim: "senders" };
+  // Senders of stopped payments always keep their own place on the map.
+  const stoppedFrom = new Set(ring.edges.filter((e) => e.stopped).map((e) => e.src));
   for (const group of [["cash_point"], ["exit"], ["traced"], ["victim", "source"]] as RingNode["role"][][]) {
-    const list = ring.nodes.filter((n) => group.includes(n.role)).sort((a, b) => (inflow.get(b.id) ?? 0) - (inflow.get(a.id) ?? 0));
+    const list = ring.nodes.filter((n) => group.includes(n.role))
+      .sort((a, b) => Number(stoppedFrom.has(b.id)) - Number(stoppedFrom.has(a.id)) || (inflow.get(b.id) ?? 0) - (inflow.get(a.id) ?? 0));
     if (list.length <= KEEP + 1) continue;
     const rest = list.slice(KEEP);
     const id = `more:${group[0]}`;
@@ -341,7 +375,7 @@ function collapse(ring: RingDetail): { nodes: RingNode[]; edges: RingDetail["edg
   for (const e of ring.edges) {
     const src = merged.get(e.src) ?? e.src;
     const dst = merged.get(e.dst) ?? e.dst;
-    const k = `${src}>${dst}`;
+    const k = `${src}>${dst}${e.stopped ? ">stopped" : ""}`;
     const cur = edges.get(k);
     if (cur) {
       cur.amount += e.amount;

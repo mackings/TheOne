@@ -22,6 +22,12 @@ def account_search(q: str, limit: int = 20, uow=Depends(get_uow)):
     return queries.search_accounts(cache.get(uow), q, limit)
 
 
+@router.get("/accounts/lookup")
+def account_lookup(bank_code: str, account_no: str, uow=Depends(get_uow)):
+    """Name enquiry: the holder of an account, by bank and account number, as a bank checks it before a transfer."""
+    return queries.lookup_account(uow, bank_code, account_no)
+
+
 @router.get("/accounts/{account_id}")
 def account_detail(account_id: str, uow=Depends(get_uow)):
     return queries.account_detail(uow, account_id)

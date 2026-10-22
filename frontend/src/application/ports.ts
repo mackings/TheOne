@@ -69,6 +69,8 @@ export interface NetworkGateway {
 
   decide(source: AccountBrief, beneficiary: AccountBrief, amountKobo: number): Promise<NetDecision>;
   decisions(limit?: number): Promise<NetDecision[]>;
+  /** Demo: pay a mule from the demo customer's account. The receiver is given a mule's history first. */
+  simulateMulePayment(bankCode: string, accountNo: string, accountName: string, amountKobo: number): Promise<NetDecision>;
   reviewDecision(id: string, outcome: "release" | "block", actor: string, note?: string): Promise<NetDecision>;
 
   alerts(): Promise<NetAlert[]>;

@@ -79,6 +79,7 @@ export function SimulationPage() {
     <>
       <PageHeader
         title="How TheOne stops fraud"
+        crumbs={[{ label: "Settings", href: "/settings" }, { label: "How it works" }]}
         subtitle="Watch a scammer talk a customer into paying a mule account, and see TheOne stop the payment inside the bank before the money leaves."
       />
 

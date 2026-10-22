@@ -89,6 +89,14 @@ class LinkIn(BaseModel):
     customer_id: str
 
 
+class MulePaymentIn(BaseModel):
+    """A payment from the demo customer to an account the console verified; it is given a mule's history first."""
+    bank_code: str = Field(min_length=3, max_length=12)
+    account_no: str = Field(pattern=r"^\d{10}$")
+    account_name: str = Field(min_length=1, max_length=80)
+    amount_kobo: int = Field(gt=0)
+
+
 class SimulateIn(BaseModel):
     seed: int = 7
     customers: int = Field(default=600, ge=50, le=5000)
